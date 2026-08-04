@@ -8,7 +8,7 @@ import { connectDB } from './config/database.js';
 // Load variables from .env
 dotenv.config();
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 // Create HTTP server wrapping the Express app
 const server = http.createServer(app);
