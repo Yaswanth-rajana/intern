@@ -13,4 +13,4 @@ export const mqttConfig = {
   rejectUnauthorized: true // Ensure TLS verification
 };
 
-export const mqttTopic = process.env.MQTT_TOPIC || 'iaq/device/IAQ-0001';
+export const mqttTopic = process.env.MQTT_TOPIC || ['iaq/device/#', 'iaq/devices/#'];

@@ -184,7 +184,7 @@ export const initMqttService = () => {
 
   mqttClient.on('connect', () => {
     console.log('✓ MQTT Connected');
-    mqttClient.subscribe(mqttTopic, (err, granted) => {
+    mqttClient.subscribe(["iaq/device/#", "iaq/devices/#"], (err, granted) => {
       if (err) {
         console.error("Subscription error:", err);
         return;
