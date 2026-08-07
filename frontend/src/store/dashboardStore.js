@@ -1,13 +1,119 @@
 import { create } from 'zustand';
-import { fetchDevices, fetchDeviceLatest, fetchDeviceHistory, healthCheck } from '../services/api';
+import { 
+  fetchDevices, 
+  fetchDeviceLatest, 
+  fetchDeviceHistory, 
+  healthCheck, 
+  fetchThresholds, 
+  updateThreshold, 
+  updateDeviceLocation 
+} from '../services/api';
 import { connectSocket, socket } from '../services/socket';
-import { getSensorStatus } from '../utils/sensorStatusConfig';
+import { getSensorStatus, updateSensorLimits } from '../utils/sensorStatusConfig';
 
 const HISTORY_LIMIT = 50;
+
+const generateAlarmsList = (sensors, prevAlarms = [], timeStr = new Date().toLocaleTimeString()) => {
+  let newAlarms = [...prevAlarms];
+  const now = Date.now();
+
+  Object.entries(sensors).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+
+    const currentStatus = getSensorStatus(key, value);
+    
+    // Find if there's already an active alarm for this sensor
+    const activeAlarmIdx = newAlarms.findIndex(a => a.sensor === key && a.status === 'Active');
+
+    if (currentStatus.color === 'yellow' || currentStatus.color === 'orange') {
+      // Should have a Warning alarm
+      if (activeAlarmIdx > -1) {
+        const existing = newAlarms[activeAlarmIdx];
+        if (existing.severity !== 'Warning') {
+          // Change critical to warning
+          newAlarms[activeAlarmIdx] = {
+            ...existing,
+            timestamp: timeStr,
+            value,
+            severity: 'Warning',
+            message: `${key} reached warning level (${value} - ${currentStatus.label})`,
+            threshold: 'Warning Limit'
+          };
+        } else {
+          // Update value
+          newAlarms[activeAlarmIdx].value = value;
+        }
+      } else {
+        // Add new warning alarm
+        newAlarms.unshift({
+          id: `${key}-warning-${now}`,
+          timestamp: timeStr,
+          sensor: key,
+          value: value,
+          threshold: 'Warning Limit',
+          severity: 'Warning',
+          message: `${key} reached warning level (${value} - ${currentStatus.label})`,
+          status: 'Active'
+        });
+      }
+    } else if (currentStatus.color === 'red') {
+      // Should have a Critical alarm
+      if (activeAlarmIdx > -1) {
+        const existing = newAlarms[activeAlarmIdx];
+        if (existing.severity !== 'Critical') {
+          // Change warning to critical
+          newAlarms[activeAlarmIdx] = {
+            ...existing,
+            timestamp: timeStr,
+            value,
+            severity: 'Critical',
+            message: `${key} reached critical level (${value} - ${currentStatus.label})`,
+            threshold: 'Critical Limit'
+          };
+        } else {
+          // Update value
+          newAlarms[activeAlarmIdx].value = value;
+        }
+      } else {
+        // Add new critical alarm
+        newAlarms.unshift({
+          id: `${key}-critical-${now}`,
+          timestamp: timeStr,
+          sensor: key,
+          value: value,
+          threshold: 'Critical Limit',
+          severity: 'Critical',
+          message: `${key} reached critical level (${value} - ${currentStatus.label})`,
+          status: 'Active'
+        });
+      }
+    } else if (currentStatus.color === 'green' || currentStatus.color === 'blue') {
+      // If there was an active alarm, resolve it
+      if (activeAlarmIdx > -1) {
+        const existing = newAlarms[activeAlarmIdx];
+        newAlarms[activeAlarmIdx] = {
+          ...existing,
+          status: 'Resolved',
+          severity: 'Info',
+          message: `${key} returned to normal levels (${value} - ${currentStatus.label})`,
+          timestamp: timeStr
+        };
+      }
+    }
+  });
+
+  if (newAlarms.length > 100) {
+    newAlarms = newAlarms.slice(0, 100);
+  }
+
+  return newAlarms;
+};
 
 export const useDashboardStore = create((set, get) => ({
   deviceList: [],
   selectedDeviceId: null,
+  activeTab: 'Dashboard', // 'Dashboard' | 'Devices' | 'Settings'
+  thresholds: [],
   device: {
     lastPacketTime: null,
     info: {},
@@ -18,7 +124,8 @@ export const useDashboardStore = create((set, get) => ({
   },
   history: [],
   alarms: {
-    activeAlarms: [], // { id, timestamp, sensor, value, threshold, severity, message, status }
+    activeAlarms: [], // current snapshot: one entry per sensor, updated live
+    alarmLog: [],     // historical log: every event ever fired
   },
   system: {
     backend: { status: 'Unknown' },
@@ -35,10 +142,40 @@ export const useDashboardStore = create((set, get) => ({
     state: 'initialLoading', // initialLoading, reconnecting, live, loadingDevice
   },
 
+  setActiveTab: (tab) => set({ activeTab: tab }),
+
+  resolveAlarm: (alarmId) => set((state) => {
+    const resolvedAt = new Date().toLocaleTimeString();
+
+    const resolveEntry = (alarm) =>
+      alarm.id === alarmId
+        ? { ...alarm, status: 'Resolved', severity: 'Info', resolvedAt, message: alarm.message.replace('reached', 'resolved —') }
+        : alarm;
+
+    return {
+      alarms: {
+        activeAlarms: state.alarms.activeAlarms.map(resolveEntry),
+        alarmLog: state.alarms.alarmLog.map(resolveEntry),
+      }
+    };
+  }),
+
+
   initialize: async () => {
     try {
       set((state) => ({ ui: { ...state.ui, state: 'initialLoading' } }));
       
+      // Load thresholds from DB
+      let dbThresholds = [];
+      try {
+        dbThresholds = await fetchThresholds();
+        dbThresholds.forEach(t => {
+          updateSensorLimits(t.sensorKey, t.warningLimit, t.criticalLimit);
+        });
+      } catch (err) {
+        console.error('Failed to fetch thresholds on init', err);
+      }
+
       let devices = [];
       try {
         devices = await fetchDevices();
@@ -101,8 +238,13 @@ export const useDashboardStore = create((set, get) => ({
         return {
           deviceList: devices,
           selectedDeviceId: defaultDevice,
+          thresholds: dbThresholds,
           history: newHistory,
           sensors: { latest: latestSensors },
+          alarms: {
+            activeAlarms: generateAlarmsList(latestSensors, [], new Date().toLocaleTimeString()),
+            alarmLog: generateAlarmsList(latestSensors, [], new Date().toLocaleTimeString()),
+          },
           device: {
             ...state.device,
             info: latestData || {},
@@ -195,6 +337,10 @@ export const useDashboardStore = create((set, get) => ({
         return {
           history: newHistory,
           sensors: { latest: latestSensors },
+          alarms: {
+            activeAlarms: generateAlarmsList(latestSensors, [], new Date().toLocaleTimeString()),
+            alarmLog: generateAlarmsList(latestSensors, [], new Date().toLocaleTimeString()),
+          },
           device: {
             ...state.device,
             info: latestData || {},
@@ -282,57 +428,76 @@ export const useDashboardStore = create((set, get) => ({
         newHistory = newHistory.slice(newHistory.length - HISTORY_LIMIT);
       }
 
-      // Advanced Alarm Generation Logic
-      let newAlarms = [...state.alarms.activeAlarms];
-      
-      Object.entries(normalizedSensors).forEach(([key, value]) => {
-        if (value === undefined) return;
-        
-        const prevValue = state.sensors.latest[key];
-        const currentStatus = getSensorStatus(key, value);
-        const prevStatus = prevValue !== undefined ? getSensorStatus(key, prevValue) : { label: 'Good', color: 'green' };
+      // Update current-state alarm snapshot (one entry per sensor)
+      const newAlarms = generateAlarmsList(normalizedSensors, state.alarms.activeAlarms, timeStr);
 
-        if ((prevStatus.color === 'green' || prevStatus.color === 'blue') && (currentStatus.color === 'orange' || currentStatus.color === 'yellow')) {
-          newAlarms.unshift({
-            id: `${key}-warning-${now}`,
-            timestamp: timeStr,
-            sensor: key,
-            value: value,
-            threshold: 'Warning Limit',
-            severity: 'Warning',
-            message: `${key} reached warning level (${value} - ${currentStatus.label})`,
-            status: 'Active'
-          });
-        }
-        
-        if (prevStatus.color !== 'red' && currentStatus.color === 'red') {
-          newAlarms.unshift({
-            id: `${key}-critical-${now}`,
-            timestamp: timeStr,
-            sensor: key,
-            value: value,
-            threshold: 'Critical Limit',
-            severity: 'Critical',
-            message: `${key} reached critical level (${value} - ${currentStatus.label})`,
-            status: 'Active'
-          });
-        }
-        
-        if ((prevStatus.color === 'red' || prevStatus.color === 'orange' || prevStatus.color === 'yellow') && (currentStatus.color === 'green' || currentStatus.color === 'blue')) {
-          newAlarms.unshift({
-            id: `${key}-normal-${now}`,
-            timestamp: timeStr,
-            sensor: key,
-            value: value,
-            threshold: 'Normal Limit',
-            severity: 'Info',
-            message: `${key} returned to normal levels (${value} - ${currentStatus.label})`,
-            status: 'Resolved'
-          });
+      // Build alarm log based on SEVERITY TRANSITIONS per sensor
+      // (ID-dedup doesn't work because the same ID is reused for the same active sensor)
+      const getSeverityTier = (color) => {
+        if (color === 'red')                          return 'Critical';
+        if (color === 'yellow' || color === 'orange') return 'Warning';
+        return 'Normal';
+      };
+
+      let newAlarmLog = [...state.alarms.alarmLog];
+
+      Object.entries(normalizedSensors).forEach(([key, value]) => {
+        if (value === undefined || value === null) return;
+
+        const prevValue       = state.sensors.latest[key];
+        const currentStatus   = getSensorStatus(key, value);
+        const prevStatus      = prevValue !== undefined
+          ? getSensorStatus(key, prevValue)
+          : { label: 'Normal', color: 'green' };
+
+        const prevTier    = getSeverityTier(prevStatus.color);
+        const currentTier = getSeverityTier(currentStatus.color);
+
+        // Only log when the severity tier actually changes
+        if (currentTier !== prevTier) {
+          const logId = `${key}-${currentTier.toLowerCase()}-${now}`;
+          if (currentTier === 'Warning') {
+            newAlarmLog.unshift({
+              id: logId,
+              timestamp: timeStr,
+              loggedAt: new Date().toISOString(),
+              sensor: key,
+              value,
+              threshold: 'Warning Limit',
+              severity: 'Warning',
+              message: `${key} reached warning level (${value} - ${currentStatus.label})`,
+              status: 'Active',
+            });
+          } else if (currentTier === 'Critical') {
+            newAlarmLog.unshift({
+              id: logId,
+              timestamp: timeStr,
+              loggedAt: new Date().toISOString(),
+              sensor: key,
+              value,
+              threshold: 'Critical Limit',
+              severity: 'Critical',
+              message: `${key} reached critical level (${value} - ${currentStatus.label})`,
+              status: 'Active',
+            });
+          } else {
+            // Returned to Normal
+            newAlarmLog.unshift({
+              id: logId,
+              timestamp: timeStr,
+              loggedAt: new Date().toISOString(),
+              sensor: key,
+              value,
+              threshold: 'Normal',
+              severity: 'Info',
+              message: `${key} returned to normal (${value} - ${currentStatus.label})`,
+              status: 'Resolved',
+            });
+          }
         }
       });
-      
-      if (newAlarms.length > 100) newAlarms = newAlarms.slice(0, 100);
+
+      if (newAlarmLog.length > 500) newAlarmLog = newAlarmLog.slice(0, 500);
 
       const newTotalPackets = state.device.totalPackets + 1;
       const newMessagesToday = state.stats.messagesToday + 1;
@@ -355,7 +520,8 @@ export const useDashboardStore = create((set, get) => ({
         },
         history: newHistory,
         alarms: {
-          activeAlarms: newAlarms
+          activeAlarms: newAlarms,
+          alarmLog: newAlarmLog,
         },
         stats: {
           messagesToday: newMessagesToday,
@@ -392,6 +558,63 @@ export const useDashboardStore = create((set, get) => ({
         ui: { state: uiState }
       };
     });
+  },
+
+  updateDeviceLocation: async (deviceId, location) => {
+    try {
+      await updateDeviceLocation(deviceId, location);
+      set((state) => {
+        const newList = state.deviceList.map(d => 
+          d.deviceId === deviceId ? { ...d, location } : d
+        );
+        const updatedInfo = state.device.info.deviceId === deviceId 
+          ? { ...state.device.info, location } 
+          : state.device.info;
+        return {
+          deviceList: newList,
+          device: { ...state.device, info: updatedInfo }
+        };
+      });
+      return true;
+    } catch (err) {
+      console.error('Failed to update location', err);
+      return false;
+    }
+  },
+
+  updateThreshold: async (sensorKey, warningLimit, criticalLimit) => {
+    try {
+      await updateThreshold(sensorKey, warningLimit, criticalLimit);
+      updateSensorLimits(sensorKey, warningLimit, criticalLimit);
+      set((state) => {
+        const index = state.thresholds.findIndex(t => t.sensorKey === sensorKey);
+        let newThresholds = [...state.thresholds];
+        if (index > -1) {
+          newThresholds[index] = { ...newThresholds[index], warningLimit, criticalLimit };
+        } else {
+          newThresholds.push({ sensorKey, warningLimit, criticalLimit });
+        }
+
+        // Recalculate alarms immediately with updated thresholds
+        const newAlarms = generateAlarmsList(state.sensors.latest, state.alarms.activeAlarms);
+        let newLog = [...state.alarms.alarmLog];
+        newAlarms.forEach(alarm => {
+          if (!newLog.find(l => l.id === alarm.id)) {
+            newLog.unshift({ ...alarm, loggedAt: new Date().toISOString() });
+          }
+        });
+        if (newLog.length > 500) newLog = newLog.slice(0, 500);
+
+        return { 
+          thresholds: newThresholds,
+          alarms: { activeAlarms: newAlarms, alarmLog: newLog }
+        };
+      });
+      return true;
+    } catch (err) {
+      console.error('Failed to update threshold', err);
+      return false;
+    }
   }
 }));
 

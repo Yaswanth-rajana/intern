@@ -34,3 +34,7 @@ coverage/
 .vscode/
 *.swp
 *.swo
+
+# Ignore .env files
+.env
+.env.*

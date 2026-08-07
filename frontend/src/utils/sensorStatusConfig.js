@@ -134,3 +134,24 @@ export function getSensorStatus(key, value) {
   }
   return { label: 'Unknown', color: 'gray' };
 }
+
+export function updateSensorLimits(key, warningLimit, criticalLimit) {
+  const config = SENSOR_CONFIG[key];
+  if (!config || !config.thresholds || config.thresholds.length < 5) return;
+
+  if (key === 'Temperature') {
+    config.thresholds[1].max = warningLimit;
+    config.thresholds[2].max = Math.round((warningLimit + criticalLimit) / 2 * 100) / 100;
+    config.thresholds[3].max = criticalLimit;
+  } else if (key === 'Humidity') {
+    config.thresholds[1].max = warningLimit;
+    config.thresholds[2].max = Math.round((warningLimit + criticalLimit) / 2);
+    config.thresholds[3].max = criticalLimit;
+  } else {
+    config.thresholds[0].max = Math.round(warningLimit * 0.5);
+    config.thresholds[1].max = warningLimit;
+    config.thresholds[2].max = Math.round((warningLimit + criticalLimit) / 2);
+    config.thresholds[3].max = criticalLimit;
+  }
+}
+

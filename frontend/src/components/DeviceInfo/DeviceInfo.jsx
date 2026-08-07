@@ -12,24 +12,28 @@ export function DeviceInfo() {
   const selectDevice = useDashboardStore(state => state.selectDevice);
   
   const isLoading = uiState === 'initialLoading';
+  const setActiveTab = useDashboardStore(state => state.setActiveTab);
 
   const [status, setStatus] = useState('offline');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (!device.lastPacketTime) {
-        setStatus('offline');
-        return;
-      }
-      const age = Date.now() - device.lastPacketTime;
-      if (age < 10000) setStatus('online');
-      else if (age < 30000) setStatus('warning');
+    const tick = () => {
+      const lastPacketTime = useDashboardStore.getState().device.lastPacketTime;
+      const avgInterval = useDashboardStore.getState().stats.avgPacketInterval;
+      const base = avgInterval > 0 ? avgInterval : 15000;
+      if (!lastPacketTime) { setStatus('offline'); return; }
+      const age = Date.now() - lastPacketTime;
+      if (age < base * 2.5) setStatus('online');
+      else if (age < base * 5) setStatus('warning');
       else setStatus('offline');
-    }, 1000);
+    };
+    tick();
+    const interval = setInterval(tick, 2000);
     return () => clearInterval(interval);
-  }, [device.lastPacketTime]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -53,9 +57,9 @@ export function DeviceInfo() {
   const lastUpdatedStr = device.lastPacketTime ? new Date(device.lastPacketTime).toLocaleTimeString() : '--:--:--';
 
   return (
-    <div className="bg-white rounded-[16px] shadow-soft p-[20px] px-[24px] col-span-full flex flex-col xl:flex-row items-start xl:items-center justify-between gap-6">
+    <div className="bg-white rounded-[16px] shadow-soft p-[20px] px-[24px] col-span-full flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
       
-      <div className="flex items-center gap-8 xl:divide-x xl:divide-neutral-200 w-full xl:w-auto">
+      <div className="flex flex-col xl:flex-row items-start xl:items-center gap-4 xl:gap-8 w-full xl:divide-x xl:divide-neutral-200">
         
         {/* Selected Device Dropdown */}
         <div className="flex flex-col gap-1 pr-6 w-full xl:w-auto shrink-0 relative" ref={dropdownRef}>
@@ -113,8 +117,9 @@ export function DeviceInfo() {
           )}
         </div>
 
-        {/* Info Metrics Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-8 xl:gap-10 xl:pl-8 w-full">
+        {/* Info Metrics — horizontally scrollable on mobile */}
+        <div className="overflow-x-auto w-full xl:pl-8">
+          <div className="flex gap-6 xl:gap-10 min-w-max xl:min-w-0 xl:grid xl:grid-cols-5">
           
           <div className="flex items-center gap-3">
             <MapPin className="w-[22px] h-[22px] text-neutral-400" />
@@ -156,10 +161,14 @@ export function DeviceInfo() {
             </div>
           </div>
 
+          </div>
         </div>
       </div>
 
-      <button className="shrink-0 flex items-center justify-center gap-2 px-5 py-2.5 bg-white hover:bg-neutral-50 text-neutral-700 font-bold text-[13px] rounded-xl transition-all border border-neutral-200 shadow-sm hover:shadow">
+      <button
+        onClick={() => setActiveTab('Devices')}
+        className="shrink-0 flex items-center justify-center gap-2 px-5 py-2.5 bg-white hover:bg-neutral-50 text-neutral-700 font-bold text-[13px] rounded-xl transition-all border border-neutral-200 shadow-sm hover:shadow whitespace-nowrap"
+      >
         <Server className="w-[18px] h-[18px]" />
         View Devices
       </button>

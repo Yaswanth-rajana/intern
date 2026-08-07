@@ -3,7 +3,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { cn } from '../../utils/cn';
 import { Skeleton } from '../LoadingSkeleton/LoadingSkeleton';
 import { useDashboardStore } from '../../store/dashboardStore';
-import { Download, CheckSquare, Square } from 'lucide-react';
+import { Download, CheckSquare, Square, SlidersHorizontal } from 'lucide-react';
 
 const METRIC_CONFIG = [
   { key: 'AQI', label: 'AQI', color: '#10b981', yAxisId: 'left', unit: '', defaultVisible: true },
@@ -163,13 +163,28 @@ export function ChartsSection() {
     }
   };
 
-  const filterButtons = (
-    <div className="flex items-center gap-3">
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const filterMenuRef = React.useRef(null);
+
+  // Close filter menu on outside click
+  React.useEffect(() => {
+    const handler = (e) => {
+      if (filterMenuRef.current && !filterMenuRef.current.contains(e.target)) {
+        setFilterMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Shared controls content (used in both inline + dropdown)
+  const controlsContent = (
+    <div className="flex flex-wrap items-center gap-2">
       <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg">
         {filters.map(f => (
-          <button 
+          <button
             key={f}
-            onClick={() => setActiveFilter(f)}
+            onClick={() => { setActiveFilter(f); setFilterMenuOpen(false); }}
             className={cn(
               "px-3 py-1 text-[11px] font-bold rounded-md transition-all duration-150",
               activeFilter === f ? "bg-white text-neutral-800 shadow-sm" : "text-neutral-500 hover:text-neutral-700"
@@ -180,15 +195,15 @@ export function ChartsSection() {
         ))}
       </div>
       <div className="flex items-center gap-1">
-        <button 
-          onClick={() => exportData('csv')}
+        <button
+          onClick={() => { exportData('csv'); setFilterMenuOpen(false); }}
           className="flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold text-neutral-600 bg-white border border-neutral-200 rounded-md hover:bg-neutral-50 transition-colors shadow-sm"
           title="Export CSV"
         >
           <Download className="w-3 h-3" /> CSV
         </button>
-        <button 
-          onClick={() => exportData('json')}
+        <button
+          onClick={() => { exportData('json'); setFilterMenuOpen(false); }}
           className="flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold text-neutral-600 bg-white border border-neutral-200 rounded-md hover:bg-neutral-50 transition-colors shadow-sm"
           title="Export JSON"
         >
@@ -196,6 +211,38 @@ export function ChartsSection() {
         </button>
       </div>
     </div>
+  );
+
+  const filterButtons = (
+    <>
+      {/* md+: inline controls */}
+      <div className="hidden md:flex items-center gap-3">
+        {controlsContent}
+      </div>
+
+      {/* < md: funnel icon → dropdown */}
+      <div className="md:hidden relative" ref={filterMenuRef}>
+        <button
+          onClick={() => setFilterMenuOpen(o => !o)}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] font-bold transition-all",
+            filterMenuOpen
+              ? "bg-primary text-white border-primary shadow-sm"
+              : "bg-white text-neutral-600 border-neutral-200 hover:border-neutral-400 shadow-sm"
+          )}
+          title="Chart filters"
+        >
+          <SlidersHorizontal className="w-4 h-4" />
+          <span>{activeFilter}</span>
+        </button>
+
+        {filterMenuOpen && (
+          <div className="absolute right-0 top-full mt-2 z-30 bg-white border border-neutral-200 rounded-xl shadow-xl p-3 min-w-[260px]">
+            {controlsContent}
+          </div>
+        )}
+      </div>
+    </>
   );
 
   if (isLoading) {

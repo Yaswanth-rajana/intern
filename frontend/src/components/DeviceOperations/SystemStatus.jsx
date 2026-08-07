@@ -11,19 +11,29 @@ export function SystemStatus() {
   const [sensorHealth, setSensorHealth] = useState('Offline');
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (!device.lastPacketTime) {
+    const tick = () => {
+      const lastPacketTime = useDashboardStore.getState().device.lastPacketTime;
+
+      if (!lastPacketTime) {
         setDevStatus('Offline');
         setSignalQuality('None');
         setSensorHealth('Offline');
         return;
       }
-      const age = Date.now() - device.lastPacketTime;
-      
-      if (age < 10000) {
+      const age = Date.now() - lastPacketTime;
+
+      // Use the device's own measured avg packet interval as the baseline.
+      // Falls back to 15 000 ms if we haven't collected enough data yet.
+      const { avgPacketInterval } = useDashboardStore.getState().stats;
+      const baseInterval = avgPacketInterval > 0 ? avgPacketInterval : 15000;
+
+      // Online  → within 2.5× the device's own interval
+      // Warning → within 5×  (packet is late but device may not be dead)
+      // Offline → beyond 5×
+      if (age < baseInterval * 2.5) {
         setDevStatus('Online');
         setSignalQuality('Excellent');
-      } else if (age < 30000) {
+      } else if (age < baseInterval * 5) {
         setDevStatus('Warning');
         setSignalQuality('Fair');
       } else {
@@ -31,10 +41,15 @@ export function SystemStatus() {
         setSignalQuality('Poor');
       }
 
-      setSensorHealth(age < 20000 ? 'Online' : 'Offline');
-    }, 1000);
+      setSensorHealth(age < baseInterval * 3 ? 'Online' : 'Offline');
+    };
+
+    // Run immediately so there's no initial blank state
+    tick();
+    const interval = setInterval(tick, 2000);
     return () => clearInterval(interval);
-  }, [device.lastPacketTime]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // ← empty deps: interval created once, reads fresh store state each tick
 
   const operations = [
     { label: 'MQTT Broker', value: system.mqtt.status, status: system.mqtt.status === 'Connected' ? 'bg-success' : 'bg-danger' },

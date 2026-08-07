@@ -429,3 +429,23 @@ export const disconnectMqtt = () => {
     });
   }
 };
+
+export const updateDeviceLocation = async (deviceId, location) => {
+  // Update in DB
+  await Device.updateOne({ deviceId }, { location });
+
+  // Update in memory cache
+  const cachedDevice = devices.get(deviceId);
+  if (cachedDevice) {
+    cachedDevice.location = location;
+  }
+
+  // Broadcast updates to clients
+  try {
+    const io = getIO();
+    io.emit('deviceListUpdated', getDeviceList());
+  } catch (err) {
+    console.error('Socket.IO emit error:', err.message);
+  }
+};
+

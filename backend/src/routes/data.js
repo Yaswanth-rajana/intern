@@ -1,12 +1,32 @@
 import express from 'express';
-import { getLatestPayload, getHistory, getDeviceList } from '../services/mqttService.js';
+import { getLatestPayload, getHistory, getDeviceList, updateDeviceLocation } from '../services/mqttService.js';
 import SensorHistory from '../models/SensorHistory.js';
 import { parse } from 'json2csv';
+import { authenticateJWT, requireAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// Protect all routes under /devices
+router.use(authenticateJWT);
+
 router.get('/', (req, res) => {
   res.json(getDeviceList());
+});
+
+router.patch('/:deviceId', requireAdmin, async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const { location } = req.body;
+
+    if (location === undefined) {
+      return res.status(400).json({ error: 'Location is required' });
+    }
+
+    await updateDeviceLocation(deviceId, location);
+    res.json({ message: 'Device location updated successfully', deviceId, location });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update location: ' + error.message });
+  }
 });
 
 router.get('/:deviceId/latest', (req, res) => {
