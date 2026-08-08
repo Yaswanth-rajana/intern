@@ -2,9 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { Header } from './components/Header/Header';
 import { Dashboard } from './pages/Dashboard/Dashboard';
+import { SuperAdminDashboard } from './pages/Dashboard/SuperAdminDashboard';
 import { DevicesManager } from './pages/Devices/DevicesManager';
+import { SuperAdminDevicesManager } from './pages/Devices/SuperAdminDevicesManager';
+import { ClientsManager } from './pages/Clients/ClientsManager';
 import { ThresholdsManager } from './pages/Settings/ThresholdsManager';
 import { AlarmsLog } from './pages/Alarms/AlarmsLog';
+import { UsersManager } from './pages/Users/UsersManager';
 import { Login } from './pages/Login/Login';
 import { ConnectionStatus } from './components/ConnectionStatus/ConnectionStatus';
 import { useDashboardStore } from './store/dashboardStore';
@@ -22,6 +26,8 @@ function App() {
   const activeTab  = useDashboardStore(state => state.activeTab);
 
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+  const user            = useAuthStore(state => state.user);
+  const isSuperAdmin    = user?.role === 'SUPER_ADMIN';
 
   // Sidebar open/close state (collapsed by default on mobile)
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -40,11 +46,13 @@ function App() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'Devices':   return <DevicesManager />;
+      case 'Clients':   return isSuperAdmin ? <ClientsManager /> : <Dashboard />;
+      case 'Users':     return <UsersManager />;
+      case 'Devices':   return isSuperAdmin ? <SuperAdminDevicesManager /> : <DevicesManager />;
       case 'Settings':  return <ThresholdsManager />;
       case 'Alarms':    return <AlarmsLog />;
       case 'Dashboard':
-      default:          return <Dashboard />;
+      default:          return isSuperAdmin ? <SuperAdminDashboard /> : <Dashboard />;
     }
   };
 
@@ -85,7 +93,7 @@ function App() {
                   <li className="flex justify-between"><kbd className="bg-neutral-200 px-2 py-1 rounded">R</kbd> <span>Reconnect MQTT</span></li>
                   <li className="flex justify-between"><kbd className="bg-neutral-200 px-2 py-1 rounded">L</kbd> <span>Clear Alarms</span></li>
                   <li className="flex justify-between"><kbd className="bg-neutral-200 px-2 py-1 rounded">H</kbd> <span>Go Home</span></li>
-                  <li className="flex justify-between"><kbd className="bg-neutral-200 px-2 py-1 rounded">?</kbd> <span>Show Shortcuts</span></li>
+                  <li className="flex justify-between"><kbd className="bg-neutral-200 px-2 py-1 rounded font-mono">?</kbd> <span>Show Shortcuts</span></li>
                 </ul>
               </div>
             </div>

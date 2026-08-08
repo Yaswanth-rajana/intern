@@ -73,34 +73,27 @@ export function Dashboard() {
         }
       </div>
 
-      {/* Split Section */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-[20px] mt-6">
-        
-        {/* Left Pane */}
-        <div className="xl:col-span-8 flex flex-col gap-[24px]">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-[20px]">
-            {gaugesConfig.map((gauge) => (
-              <GaugeCard 
-                key={gauge.title}
-                title={gauge.title}
-                value={gauge.value}
-                unit={gauge.unit}
-                maxValue={gauge.max}
-                isLoading={isLoading}
-              />
-            ))}
-          </div>
-          <ChartsSection />
-        </div>
+      {/* Gauge Cards - full width */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-[20px] mt-6">
+        {gaugesConfig.map((gauge) => (
+          <GaugeCard
+            key={gauge.title}
+            title={gauge.title}
+            value={gauge.value}
+            unit={gauge.unit}
+            maxValue={gauge.max}
+            isLoading={isLoading}
+          />
+        ))}
+      </div>
 
-        {/* Right Pane */}
-        <div className="xl:col-span-4 flex flex-col gap-[24px]">
-          <SystemStatus />
-          <div className="flex-1">
-            <AlarmPanel />
-          </div>
-        </div>
+      {/* Chart - full width */}
+      <ChartsSection />
 
+      {/* Status + Alarms - below chart */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-[20px]">
+        <SystemStatus />
+        <AlarmPanel />
       </div>
 
       <DiagnosticsPanel className="mt-6" />

@@ -20,11 +20,46 @@ const METRIC_CONFIG = [
 
 const formatTime = (timeStr) => {
   if (!timeStr) return '';
-  const parts = timeStr.split(':');
+  // Strip gap markers
+  const clean = typeof timeStr === 'string' ? timeStr.replace('__gap', '') : timeStr;
+  const parts = clean.split(':');
   if (parts.length >= 2) {
     return `${parts[0]}:${parts[1]}`;
   }
-  return timeStr;
+  return clean;
+};
+
+// Gap threshold (ms) per filter — if two consecutive points are further apart
+// than this, a null row is inserted so the line visually breaks.
+const GAP_THRESHOLDS = {
+  Live: 2 * 60 * 1000,      // 2 min
+  '1H': 5 * 60 * 1000,     // 5 min
+  '24H': 30 * 60 * 1000,   // 30 min
+  '7D': 3 * 60 * 60 * 1000, // 3 hr
+  '30D': 12 * 60 * 60 * 1000, // 12 hr
+};
+
+const NULL_SENSOR_VALS = Object.fromEntries(METRIC_CONFIG.map(c => [c.key, null]));
+
+const processDataWithGaps = (data, filter) => {
+  if (!data || data.length < 2) return data || [];
+  const threshold = GAP_THRESHOLDS[filter] || GAP_THRESHOLDS.Live;
+  const result = [];
+  for (let i = 0; i < data.length; i++) {
+    result.push(data[i]);
+    if (i < data.length - 1) {
+      const curr = data[i]._ts;
+      const next = data[i + 1]._ts;
+      if (curr && next && (next - curr) > threshold) {
+        result.push({
+          timestamp: data[i].timestamp + '__gap',
+          _ts: curr + 1,
+          ...NULL_SENSOR_VALS,
+        });
+      }
+    }
+  }
+  return result;
 };
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -259,6 +294,26 @@ export function ChartsSection() {
 
   const activeMetricsList = METRIC_CONFIG.filter(c => visibleMetrics[c.key]);
 
+  const chartData = processDataWithGaps(history, activeFilter);
+
+  if (!history || history.length === 0) {
+    return (
+      <div className="bg-white rounded-[16px] shadow-soft p-[24px] flex flex-col w-full min-h-[300px] items-center justify-center gap-4">
+        <div className="flex items-center justify-between w-full mb-4">
+          <h3 className="text-[20px] font-bold text-neutral-800">Air Quality Analytics</h3>
+          {filterButtons}
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center text-center gap-3">
+          <div className="w-16 h-16 rounded-full bg-neutral-100 flex items-center justify-center">
+            <svg className="w-8 h-8 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+          </div>
+          <p className="text-[15px] font-semibold text-neutral-600">No data available</p>
+          <p className="text-[13px] text-neutral-400 max-w-xs">The device has not sent any readings yet. Data will appear here once the device comes online.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white rounded-[16px] shadow-soft p-[24px] flex flex-col w-full h-full min-h-[600px]">
       
@@ -271,7 +326,7 @@ export function ChartsSection() {
 
       <div className="flex-1 w-full min-h-[450px]">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={history} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+          <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4e4e7" opacity={0.6} />
             
             <XAxis 
@@ -328,6 +383,7 @@ export function ChartsSection() {
                 strokeWidth={3} 
                 dot={{ r: 0 }} 
                 activeDot={{ r: 6, strokeWidth: 0, fill: config.color }} 
+                connectNulls={false}
                 isAnimationActive={true}
                 animationDuration={1500}
                 animationEasing="ease-in-out"

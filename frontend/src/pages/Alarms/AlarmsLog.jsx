@@ -267,22 +267,15 @@ export function AlarmsLog() {
                     </p>
                   </div>
 
-                  {/* Right side: badge + sensor + resolve btn */}
-                  <div className="shrink-0 flex flex-col items-end gap-2">
+                  {/* Right side: severity badge + resolve btn in one row */}
+                  <div className="shrink-0 flex flex-row items-center gap-2">
                     <SeverityBadge severity={isResolved ? 'Resolved' : alarm.severity} />
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
-                      isCritical && !isResolved ? 'bg-rose-100 text-rose-700' :
-                      isWarning  && !isResolved ? 'bg-amber-100 text-amber-700' :
-                                                  'bg-neutral-100 text-neutral-500'
-                    }`}>
-                      {SENSOR_LABELS[alarm.sensor] || alarm.sensor}
-                    </span>
 
                     {/* Manual Resolve button — on all active alarms */}
                     {isActive && (
                       <button
                         onClick={() => resolveAlarm(alarm.id)}
-                        className="mt-1 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold text-neutral-500 bg-neutral-100 hover:bg-emerald-50 hover:text-emerald-700 border border-neutral-200 hover:border-emerald-300 transition-all"
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold text-neutral-500 bg-neutral-100 hover:bg-emerald-50 hover:text-emerald-700 border border-neutral-200 hover:border-emerald-300 transition-all"
                         title="Mark as Resolved"
                       >
                         <ShieldCheck className="w-3.5 h-3.5" />

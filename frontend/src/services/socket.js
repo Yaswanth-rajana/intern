@@ -9,10 +9,19 @@ export const socket = io(SOCKET_URL, {
   reconnectionDelay: 1000,
   reconnectionDelayMax: 5000,
   reconnectionAttempts: Infinity,
+  auth: (cb) => {
+    cb({ token: localStorage.getItem('token') });
+  }
 });
 
 export const connectSocket = () => {
+  const token = localStorage.getItem('token');
+  socket.auth = { token };
   if (!socket.connected) {
+    socket.connect();
+  } else {
+    // If connected without token or changed user, disconnect and reconnect to join tenant room
+    socket.disconnect();
     socket.connect();
   }
 };

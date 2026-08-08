@@ -10,9 +10,9 @@ export function AlarmPanel() {
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-[16px] shadow-soft p-[24px] flex flex-col h-full min-h-[300px]">
+      <div className="bg-white rounded-[16px] shadow-soft p-[24px] flex flex-col">
         <Skeleton className="w-48 h-6 mb-6" />
-        <Skeleton className="w-full h-full" />
+        <Skeleton className="w-full h-32" />
       </div>
     );
   }
@@ -20,7 +20,7 @@ export function AlarmPanel() {
   const criticalAlarms = alarms.filter(a => a.severity === 'Critical');
 
   return (
-    <div className="bg-white rounded-[16px] shadow-soft flex flex-col h-full overflow-hidden min-h-[300px]">
+    <div className="bg-white rounded-[16px] shadow-soft flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div className="p-[24px] border-b border-neutral-100 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -39,7 +39,7 @@ export function AlarmPanel() {
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto max-h-[400px]">
+      <div className="overflow-auto max-h-[220px]">
         <table className="w-full text-left border-collapse">
           <thead className="sticky top-0 bg-neutral-50/95 backdrop-blur shadow-sm text-[11px] font-bold text-neutral-500 uppercase tracking-wider z-10">
             <tr>
@@ -81,7 +81,7 @@ export function AlarmPanel() {
 
             {criticalAlarms.length === 0 && (
               <tr>
-                <td colSpan={3} className="text-center py-10 text-neutral-400 text-sm font-semibold">
+                <td colSpan={3} className="text-center py-5 text-neutral-400 text-sm font-semibold">
                   No critical alarms active.
                 </td>
               </tr>

@@ -17,11 +17,13 @@ const sensorHistorySchema = new mongoose.Schema({
   topic: { type: String },
   qos: { type: Number },
   retain: { type: Boolean },
+  tenantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', default: null },
   receivedAt: { type: Date, default: Date.now }
 });
 
 // Indexes
 sensorHistorySchema.index({ deviceId: 1, timestamp: -1 });
+sensorHistorySchema.index({ tenantId: 1, deviceId: 1, timestamp: -1 });
 
 // TTL Index: automatically delete documents 180 days after receivedAt
 sensorHistorySchema.index({ receivedAt: 1 }, { expireAfterSeconds: 180 * 24 * 60 * 60 });

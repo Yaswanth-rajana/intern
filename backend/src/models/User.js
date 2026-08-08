@@ -15,8 +15,13 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['Admin', 'Viewer'],
-      default: 'Viewer',
+      enum: ['SUPER_ADMIN', 'CLIENT_ADMIN', 'VIEWER'],
+      default: 'VIEWER',
+    },
+    tenantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Tenant',
+      default: null,
     },
   },
   {
@@ -25,6 +30,7 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.index({ username: 1 });
+userSchema.index({ tenantId: 1 });
 
 const User = mongoose.model('User', userSchema);
 

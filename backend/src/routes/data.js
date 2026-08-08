@@ -1,56 +1,152 @@
 import express from 'express';
-import { getLatestPayload, getHistory, getDeviceList, updateDeviceLocation } from '../services/mqttService.js';
+import { 
+  getLatestPayload, 
+  getHistory, 
+  getDeviceList, 
+  updateDeviceLocation, 
+  verifyDeviceTenantAccess,
+  registerDeviceInCache
+} from '../services/mqttService.js';
+import Device from '../models/Device.js';
 import SensorHistory from '../models/SensorHistory.js';
 import { parse } from 'json2csv';
-import { authenticateJWT, requireAdmin } from '../middleware/auth.js';
+import { authenticateJWT, requireRole, applyTenantFilter } from '../middleware/auth.js';
+import { logAudit } from '../models/AuditLog.js';
 
 const router = express.Router();
 
 // Protect all routes under /devices
 router.use(authenticateJWT);
 
-router.get('/', (req, res) => {
-  res.json(getDeviceList());
+// GET /devices - Get list of devices (scoped to tenant unless SUPER_ADMIN)
+router.get('/', async (req, res) => {
+  try {
+    const devices = await getDeviceList(req.user, req.query);
+    res.json(devices);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch devices: ' + error.message });
+  }
 });
 
-router.patch('/:deviceId', requireAdmin, async (req, res) => {
+// POST /devices/register - Register new physical device hardware (SUPER_ADMIN only)
+router.post('/register', requireRole('SUPER_ADMIN'), async (req, res) => {
   try {
-    const { deviceId } = req.params;
-    const { location } = req.body;
+    const { deviceId, name, location, firmwareVersion, hardwareVersion } = req.body;
 
-    if (location === undefined) {
-      return res.status(400).json({ error: 'Location is required' });
+    if (!deviceId || !deviceId.trim()) {
+      return res.status(400).json({ error: 'deviceId is required' });
     }
 
-    await updateDeviceLocation(deviceId, location);
-    res.json({ message: 'Device location updated successfully', deviceId, location });
+    const cleanDeviceId = deviceId.trim();
+    const existing = await Device.findOne({ deviceId: cleanDeviceId });
+    if (existing) {
+      return res.status(409).json({ error: `Device "${cleanDeviceId}" is already registered` });
+    }
+
+    const newDevice = new Device({
+      deviceId: cleanDeviceId,
+      name: name?.trim() || cleanDeviceId,
+      location: location?.trim() || 'Unallocated',
+      firmwareVersion: firmwareVersion?.trim() || '1.0.0',
+      hardwareVersion: hardwareVersion?.trim() || 'T113i',
+      tenantId: null,
+      status: 'UNASSIGNED',
+      registeredAt: new Date(),
+    });
+
+    await newDevice.save();
+    registerDeviceInCache(newDevice.toObject());
+
+    await logAudit({
+      req,
+      action: 'REGISTER_DEVICE',
+      resource: 'Device',
+      resourceId: cleanDeviceId,
+      metadata: { name: newDevice.name, location: newDevice.location }
+    });
+
+    res.status(201).json({
+      message: `Device "${cleanDeviceId}" registered successfully`,
+      device: newDevice,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to register device: ' + error.message });
+  }
+});
+
+// PATCH /devices/:deviceId - Update device location / name (SUPER_ADMIN only)
+router.patch('/:deviceId', requireRole('SUPER_ADMIN'), async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const { location, name } = req.body;
+
+    if (location === undefined && name === undefined) {
+      return res.status(400).json({ error: 'location or name is required' });
+    }
+
+    const hasAccess = await verifyDeviceTenantAccess(deviceId, req.user);
+    if (!hasAccess) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    await updateDeviceLocation(deviceId, location, name);
+
+    await logAudit({
+      req,
+      action: 'UPDATE_DEVICE_LOCATION',
+      resource: 'Device',
+      resourceId: deviceId,
+      metadata: { location, name }
+    });
+
+    res.json({ message: 'Device location updated successfully', deviceId, location, name });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update location: ' + error.message });
   }
 });
 
-router.get('/:deviceId/latest', (req, res) => {
-  const latest = getLatestPayload(req.params.deviceId);
-  if (!latest) {
-    return res.status(404).json({ error: 'No data available yet' });
+// GET /devices/:deviceId/latest
+router.get('/:deviceId/latest', async (req, res) => {
+  try {
+    const { deviceId } = req.params;
+    const hasAccess = await verifyDeviceTenantAccess(deviceId, req.user);
+    if (!hasAccess) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    const latest = getLatestPayload(deviceId);
+    if (!latest) {
+      return res.status(404).json({ error: 'No data available yet' });
+    }
+    res.json(latest);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch latest data' });
   }
-  res.json(latest);
 });
 
+// GET /devices/:deviceId/history
 router.get('/:deviceId/history', async (req, res) => {
   try {
+    const { deviceId } = req.params;
+    const hasAccess = await verifyDeviceTenantAccess(deviceId, req.user);
+    if (!hasAccess) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 100;
-    const history = await getHistory(req.params.deviceId, page, limit);
+    const history = await getHistory(deviceId, page, limit, req.user);
     res.json(history);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch history' });
   }
 });
 
+// GET /devices/export/csv
 router.get('/export/csv', async (req, res) => {
   try {
-    const data = await SensorHistory.find({}).sort({ timestamp: -1 }).lean();
+    const filter = applyTenantFilter(req);
+    const data = await SensorHistory.find(filter).sort({ timestamp: -1 }).lean();
     if (data.length === 0) {
       return res.status(404).send('No data available for export.');
     }
@@ -63,9 +159,11 @@ router.get('/export/csv', async (req, res) => {
   }
 });
 
+// GET /devices/export/json
 router.get('/export/json', async (req, res) => {
   try {
-    const data = await SensorHistory.find({}).sort({ timestamp: -1 }).lean();
+    const filter = applyTenantFilter(req);
+    const data = await SensorHistory.find(filter).sort({ timestamp: -1 }).lean();
     res.header('Content-Type', 'application/json');
     res.attachment('sensor_history.json');
     return res.json(data);

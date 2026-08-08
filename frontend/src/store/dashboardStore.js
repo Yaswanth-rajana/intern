@@ -13,6 +13,21 @@ import { getSensorStatus, updateSensorLimits } from '../utils/sensorStatusConfig
 
 const HISTORY_LIMIT = 50;
 
+// Human-readable display names for sensor keys
+const SENSOR_DISPLAY_NAMES = {
+  AQI: 'AQI',
+  CO2: 'CO₂',
+  VOC: 'VOC',
+  Temperature: 'Temperature',
+  Humidity: 'Humidity',
+  PM1_0: 'PM 1.0',
+  PM2_5: 'PM 2.5',
+  PM4_0: 'PM 4.0',
+  PM10: 'PM 10',
+  NOX: 'NOx',
+};
+const getSensorLabel = (key) => SENSOR_DISPLAY_NAMES[key] || key;
+
 const generateAlarmsList = (sensors, prevAlarms = [], timeStr = new Date().toLocaleTimeString()) => {
   let newAlarms = [...prevAlarms];
   const now = Date.now();
@@ -36,7 +51,7 @@ const generateAlarmsList = (sensors, prevAlarms = [], timeStr = new Date().toLoc
             timestamp: timeStr,
             value,
             severity: 'Warning',
-            message: `${key} reached warning level (${value} - ${currentStatus.label})`,
+            message: `${getSensorLabel(key)} reached warning level (${value} - ${currentStatus.label})`,
             threshold: 'Warning Limit'
           };
         } else {
@@ -52,7 +67,7 @@ const generateAlarmsList = (sensors, prevAlarms = [], timeStr = new Date().toLoc
           value: value,
           threshold: 'Warning Limit',
           severity: 'Warning',
-          message: `${key} reached warning level (${value} - ${currentStatus.label})`,
+          message: `${getSensorLabel(key)} reached warning level (${value} - ${currentStatus.label})`,
           status: 'Active'
         });
       }
@@ -67,7 +82,7 @@ const generateAlarmsList = (sensors, prevAlarms = [], timeStr = new Date().toLoc
             timestamp: timeStr,
             value,
             severity: 'Critical',
-            message: `${key} reached critical level (${value} - ${currentStatus.label})`,
+            message: `${getSensorLabel(key)} reached critical level (${value} - ${currentStatus.label})`,
             threshold: 'Critical Limit'
           };
         } else {
@@ -83,7 +98,7 @@ const generateAlarmsList = (sensors, prevAlarms = [], timeStr = new Date().toLoc
           value: value,
           threshold: 'Critical Limit',
           severity: 'Critical',
-          message: `${key} reached critical level (${value} - ${currentStatus.label})`,
+          message: `${getSensorLabel(key)} reached critical level (${value} - ${currentStatus.label})`,
           status: 'Active'
         });
       }
@@ -95,7 +110,7 @@ const generateAlarmsList = (sensors, prevAlarms = [], timeStr = new Date().toLoc
           ...existing,
           status: 'Resolved',
           severity: 'Info',
-          message: `${key} returned to normal levels (${value} - ${currentStatus.label})`,
+          message: `${getSensorLabel(key)} returned to normal levels (${value} - ${currentStatus.label})`,
           timestamp: timeStr
         };
       }
@@ -209,6 +224,7 @@ export const useDashboardStore = create((set, get) => ({
         if (Array.isArray(historyData)) {
           newHistory = historyData.map(p => ({
             timestamp: new Date(p.timestamp).toLocaleTimeString(),
+            _ts: new Date(p.timestamp).getTime(),
             AQI: p.sensors?.AQI,
             CO2: p.sensors?.CO2,
             VOC: p.sensors?.VOC,
@@ -308,6 +324,7 @@ export const useDashboardStore = create((set, get) => ({
         if (Array.isArray(historyData)) {
           newHistory = historyData.map(p => ({
             timestamp: new Date(p.timestamp).toLocaleTimeString(),
+            _ts: new Date(p.timestamp).getTime(),
             AQI: p.sensors?.AQI,
             CO2: p.sensors?.CO2,
             VOC: p.sensors?.VOC,
@@ -381,25 +398,29 @@ export const useDashboardStore = create((set, get) => ({
 
     set((state) => {
       const now = Date.now();
-      
+      const nowIso = new Date(now).toISOString();
+
+      // Update deviceList for the target device
+      const updatedList = state.deviceList.map(d => {
+        if (d.deviceId === payload.deviceId) {
+          return {
+            ...d,
+            status: 'ONLINE',
+            lastSeen: nowIso,
+            lastSeenAt: nowIso,
+            messageCount: (d.messageCount || 0) + 1,
+            latestAQI: payload.sensors?.AQI,
+            latestCO2: payload.sensors?.CO2,
+            latestTemperature: payload.sensors?.Temperature,
+            latestHumidity: payload.sensors?.Humidity
+          };
+        }
+        return d;
+      });
+
       // If it's for a different device, update only the list silently
       if (payload.deviceId !== state.selectedDeviceId) {
-        const newList = state.deviceList.map(d => {
-          if (d.deviceId === payload.deviceId) {
-            return {
-              ...d,
-              status: 'Online',
-              lastSeen: new Date(now).toISOString(),
-              messageCount: d.messageCount + 1,
-              latestAQI: payload.sensors.AQI,
-              latestCO2: payload.sensors.CO2,
-              latestTemperature: payload.sensors.Temperature,
-              latestHumidity: payload.sensors.Humidity
-            };
-          }
-          return d;
-        });
-        return { deviceList: newList };
+        return { deviceList: updatedList };
       }
 
       // Process for current selected device
@@ -420,6 +441,7 @@ export const useDashboardStore = create((set, get) => ({
 
       const newHistoryPoint = {
         timestamp: timeStr,
+        _ts: now,
         ...normalizedSensors
       };
 
@@ -465,7 +487,7 @@ export const useDashboardStore = create((set, get) => ({
               value,
               threshold: 'Warning Limit',
               severity: 'Warning',
-              message: `${key} reached warning level (${value} - ${currentStatus.label})`,
+              message: `${getSensorLabel(key)} reached warning level (${value} - ${currentStatus.label})`,
               status: 'Active',
             });
           } else if (currentTier === 'Critical') {
@@ -477,7 +499,7 @@ export const useDashboardStore = create((set, get) => ({
               value,
               threshold: 'Critical Limit',
               severity: 'Critical',
-              message: `${key} reached critical level (${value} - ${currentStatus.label})`,
+              message: `${getSensorLabel(key)} reached critical level (${value} - ${currentStatus.label})`,
               status: 'Active',
             });
           } else {
@@ -490,7 +512,7 @@ export const useDashboardStore = create((set, get) => ({
               value,
               threshold: 'Normal',
               severity: 'Info',
-              message: `${key} returned to normal (${value} - ${currentStatus.label})`,
+              message: `${getSensorLabel(key)} returned to normal (${value} - ${currentStatus.label})`,
               status: 'Resolved',
             });
           }
@@ -509,6 +531,7 @@ export const useDashboardStore = create((set, get) => ({
       }
 
       return {
+        deviceList: updatedList,
         device: {
           ...state.device,
           info: payload,

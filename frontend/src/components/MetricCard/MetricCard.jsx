@@ -39,7 +39,7 @@ export function MetricCard({ icon: Icon, title, value, unit, statusObj, sparklin
   return (
     <div 
       className={cn(
-        "bg-white rounded-[20px] shadow-[0_2px_12px_rgba(0,0,0,0.04)] p-[24px] pb-[20px] flex flex-col justify-between min-h-[170px] cursor-pointer",
+        "bg-white rounded-[20px] shadow-[0_2px_12px_rgba(0,0,0,0.04)] p-[24px] pb-[20px] flex flex-col justify-between h-[170px] overflow-hidden cursor-pointer",
         "transition-all duration-150 hover:-translate-y-[2px] hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] border border-neutral-100/50", 
         className
       )}
@@ -75,8 +75,8 @@ export function MetricCard({ icon: Icon, title, value, unit, statusObj, sparklin
             {unit && <span className="text-[12px] font-semibold text-neutral-400">{unit}</span>}
           </div>
           
-          <div className="mt-1.5">
-            <span className={cn("font-bold text-[14px]", textColor)}>
+          <div className="mt-1.5 overflow-hidden">
+            <span className={cn("font-bold text-[14px] truncate whitespace-nowrap block", textColor)}>
               {statusObj?.label || 'Good'}
             </span>
           </div>

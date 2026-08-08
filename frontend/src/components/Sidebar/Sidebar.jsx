@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { LayoutDashboard, Server, Settings, Wind, LogOut, BellRing, X, Menu } from 'lucide-react';
+import React from 'react';
+import { LayoutDashboard, Server, Settings, Wind, LogOut, BellRing, X, Users, Building2 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useDashboardStore } from '../../store/dashboardStore';
 import { useAuthStore } from '../../store/authStore';
@@ -11,16 +11,21 @@ export function Sidebar({ className, isOpen, onClose }) {
   const user = useAuthStore(state => state.user);
   const logout = useAuthStore(state => state.logout);
 
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const isClientAdmin = user?.role === 'CLIENT_ADMIN' || user?.role === 'Admin';
+
   const navItems = [
     { label: 'Dashboard', icon: LayoutDashboard, value: 'Dashboard' },
-    { label: 'Alerts Log', icon: BellRing, value: 'Alarms' },
+    ...(isSuperAdmin ? [{ label: 'Clients', icon: Building2, value: 'Clients' }] : []),
     { label: 'Devices', icon: Server, value: 'Devices' },
+    { label: 'Alerts Log', icon: BellRing, value: 'Alarms' },
+    ...((isSuperAdmin || isClientAdmin) ? [{ label: 'Users', icon: Users, value: 'Users' }] : []),
     { label: 'Settings', icon: Settings, value: 'Settings' },
   ];
 
   const handleNavClick = (value) => {
     setActiveTab(value);
-    onClose?.(); // close sidebar on mobile after navigation
+    onClose?.();
   };
 
   return (
@@ -35,7 +40,6 @@ export function Sidebar({ className, isOpen, onClose }) {
 
       <aside className={cn(
         "w-64 bg-neutral-900 text-neutral-300 flex flex-col h-screen fixed left-0 top-0 z-40 shadow-lg transition-transform duration-300",
-        // On mobile: slide in/out. On desktop (lg+): always visible
         "lg:translate-x-0",
         isOpen ? "translate-x-0" : "-translate-x-full",
         className
@@ -47,7 +51,6 @@ export function Sidebar({ className, isOpen, onClose }) {
             <Wind className="w-8 h-8 text-primary" />
             <span className="text-xl font-bold tracking-wide">AeroSense</span>
           </div>
-          {/* Close button — mobile only */}
           <button
             onClick={onClose}
             className="lg:hidden p-1.5 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
@@ -65,7 +68,7 @@ export function Sidebar({ className, isOpen, onClose }) {
                 key={item.label}
                 onClick={() => handleNavClick(item.value)}
                 className={cn(
-                  "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-semibold text-sm",
+                  "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-semibold text-sm cursor-pointer",
                   isActive
                     ? "bg-primary text-white shadow-lg shadow-primary/20"
                     : "hover:bg-neutral-800/50 hover:text-white"
@@ -82,12 +85,12 @@ export function Sidebar({ className, isOpen, onClose }) {
         <div className="px-4 py-2 border-t border-neutral-800/40">
           <div className="bg-[#1e2332] rounded-xl p-3.5 text-[11px] border border-white/5">
             <h4 className="text-white/60 font-bold mb-2 uppercase tracking-widest text-[9px]">AQI Levels</h4>
-            <div className="grid grid-cols-2 gap-y-1.5 gap-x-2 text-[10px]">
-              <div className="flex justify-between items-center text-status-good"><span className="font-semibold tabular-nums">0-50</span><span>Good</span></div>
-              <div className="flex justify-between items-center text-status-moderate"><span className="font-semibold tabular-nums">51-100</span><span>Mod</span></div>
-              <div className="flex justify-between items-center text-status-poor"><span className="font-semibold tabular-nums">101-150</span><span>Poor</span></div>
-              <div className="flex justify-between items-center text-[#ef4444]"><span className="font-semibold tabular-nums">151-200</span><span>Unhealth</span></div>
-            </div>
+            <ul className="flex flex-col gap-1.5 text-[10px]">
+              <li className="flex justify-between items-center text-status-good"><span className="font-semibold tabular-nums">0–50</span><span>Good</span></li>
+              <li className="flex justify-between items-center text-status-moderate"><span className="font-semibold tabular-nums">51–100</span><span>Moderate</span></li>
+              <li className="flex justify-between items-center text-status-poor"><span className="font-semibold tabular-nums">101–150</span><span>Poor</span></li>
+              <li className="flex justify-between items-center text-[#ef4444]"><span className="font-semibold tabular-nums">151–200</span><span>Unhealthy</span></li>
+            </ul>
           </div>
         </div>
 
@@ -101,7 +104,11 @@ export function Sidebar({ className, isOpen, onClose }) {
               <span className="text-[13px] font-bold text-white truncate">{user?.username || 'User'}</span>
               <span className={cn(
                 "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md mt-0.5 w-fit",
-                user?.role === 'Admin' ? "bg-primary/20 text-primary-light" : "bg-neutral-800 text-neutral-400"
+                user?.role === 'SUPER_ADMIN'
+                  ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                  : user?.role === 'CLIENT_ADMIN' || user?.role === 'Admin'
+                    ? "bg-primary/20 text-primary-light"
+                    : "bg-neutral-800 text-neutral-400"
               )}>
                 {user?.role || 'Guest'}
               </span>
@@ -110,7 +117,7 @@ export function Sidebar({ className, isOpen, onClose }) {
 
           <button
             onClick={logout}
-            className="w-full flex items-center justify-center gap-2 py-2 px-3 hover:bg-neutral-800 text-neutral-400 hover:text-white font-bold text-xs rounded-xl transition-all border border-neutral-800 hover:border-neutral-700"
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 hover:bg-neutral-800 text-neutral-400 hover:text-white font-bold text-xs rounded-xl transition-all border border-neutral-800 hover:border-neutral-700 cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Sign Out</span>

@@ -21,8 +21,13 @@ apiClient.interceptors.request.use(
   }
 );
 
-export const fetchDevices = async () => {
-  const response = await apiClient.get('/devices');
+export const fetchDevices = async (params = {}) => {
+  const response = await apiClient.get('/devices', { params });
+  return response.data;
+};
+
+export const registerDevice = async (data) => {
+  const response = await apiClient.post('/devices/register', data);
   return response.data;
 };
 
@@ -56,5 +61,61 @@ export const updateThreshold = async (sensorKey, warningLimit, criticalLimit) =>
 
 export const healthCheck = async () => {
   const response = await apiClient.get('/health');
+  return response.data;
+};
+
+export const fetchUsers = async () => {
+  const response = await apiClient.get('/auth/users');
+  return response.data;
+};
+
+export const createUser = async ({ username, password, role, tenantId }) => {
+  const response = await apiClient.post('/auth/users', { username, password, role, tenantId });
+  return response.data;
+};
+
+export const deleteUser = async (userId) => {
+  const response = await apiClient.delete(`/auth/users/${userId}`);
+  return response.data;
+};
+
+// Tenant & Super Admin APIs
+export const fetchTenants = async () => {
+  const response = await apiClient.get('/tenants');
+  return response.data;
+};
+
+export const fetchTenant = async (id) => {
+  const response = await apiClient.get(`/tenants/${id}`);
+  return response.data;
+};
+
+export const createTenant = async (data) => {
+  const response = await apiClient.post('/tenants', data);
+  return response.data;
+};
+
+export const updateTenant = async (id, data) => {
+  const response = await apiClient.patch(`/tenants/${id}`, data);
+  return response.data;
+};
+
+export const deleteTenant = async (id) => {
+  const response = await apiClient.delete(`/tenants/${id}`);
+  return response.data;
+};
+
+export const assignDevice = async (tenantId, data) => {
+  const response = await apiClient.post(`/tenants/${tenantId}/devices`, data);
+  return response.data;
+};
+
+export const unassignDevice = async (tenantId, deviceId) => {
+  const response = await apiClient.delete(`/tenants/${tenantId}/devices/${deviceId}`);
+  return response.data;
+};
+
+export const fetchAuditLogs = async (params = {}) => {
+  const response = await apiClient.get('/audit-logs', { params });
   return response.data;
 };

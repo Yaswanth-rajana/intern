@@ -48,7 +48,7 @@ export function Header({ isConnected = true, lastPacketTime = null, alarmCount =
         </button>
 
         <h1 className="text-[16px] sm:text-[20px] lg:text-[28px] font-bold text-[#1F2937] tracking-normal leading-tight truncate">
-          Indoor Air Quality Monitoring
+          Air Quality Monitoring
           <span className="hidden sm:inline"> Platform</span>
         </h1>
       </div>

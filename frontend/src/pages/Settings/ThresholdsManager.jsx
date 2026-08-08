@@ -22,7 +22,9 @@ export function ThresholdsManager() {
   const updateThreshold = useDashboardStore(state => state.updateThreshold);
   const user = useAuthStore(state => state.user);
   
-  const isAdmin = user?.role === 'Admin';
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const isClientAdmin = user?.role === 'CLIENT_ADMIN' || user?.role === 'Admin';
+  const canEdit = isSuperAdmin || isClientAdmin;
 
   const [editingKey, setEditingKey] = useState(null);
   const [warningVal, setWarningVal] = useState('');
@@ -68,7 +70,9 @@ export function ThresholdsManager() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[28px] font-bold text-neutral-800">Alert Threshold Configurations</h1>
-          <p className="text-neutral-500 text-sm mt-1">Configure warning and critical limits for all monitored air quality parameters.</p>
+          <p className="text-neutral-500 text-sm mt-1">
+            Configure organization-specific warning and critical limits for all monitored air quality parameters.
+          </p>
         </div>
       </div>
 
@@ -80,7 +84,6 @@ export function ThresholdsManager() {
       )}
 
       <div className="bg-white rounded-[16px] shadow-soft overflow-hidden">
-        {/* overflow-x-auto makes it horizontally scrollable on small screens */}
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-left border-collapse">
             <thead>
@@ -97,7 +100,6 @@ export function ThresholdsManager() {
                 const meta = SENSOR_META[key];
                 const dbThreshold = thresholds.find(t => t.sensorKey === key);
                 
-                // Fallback to config values if database not populated yet
                 const defaultWarn = SENSOR_CONFIG[key]?.thresholds[1]?.max || 50;
                 const defaultCrit = SENSOR_CONFIG[key]?.thresholds[3]?.max || 150;
 
@@ -166,14 +168,14 @@ export function ThresholdsManager() {
                           <button
                             onClick={() => handleSave(key)}
                             disabled={isSaving}
-                            className="p-1.5 bg-success/10 hover:bg-success/20 text-success rounded-lg transition-colors"
+                            className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg transition-colors border border-emerald-200 cursor-pointer"
                             title="Save Thresholds"
                           >
                             <Check className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => setEditingKey(null)}
-                            className="p-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-600 rounded-lg transition-colors"
+                            className="p-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-600 rounded-lg transition-colors cursor-pointer"
                             title="Cancel"
                           >
                             <X className="w-4 h-4" />
@@ -181,10 +183,10 @@ export function ThresholdsManager() {
                         </div>
                       ) : (
                         <div>
-                          {isAdmin ? (
+                          {canEdit ? (
                             <button
                               onClick={() => handleEdit(key, warnLimit, critLimit)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary/5 hover:bg-primary/10 text-primary font-bold text-[12px] rounded-lg transition-colors"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary font-bold text-[12px] rounded-lg transition-colors cursor-pointer"
                             >
                               <Edit3 className="w-3.5 h-3.5" /> Configure
                             </button>

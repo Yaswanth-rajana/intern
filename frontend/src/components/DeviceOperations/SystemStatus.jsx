@@ -8,7 +8,6 @@ export function SystemStatus() {
 
   const [devStatus, setDevStatus] = useState('Offline');
   const [signalQuality, setSignalQuality] = useState('Poor');
-  const [sensorHealth, setSensorHealth] = useState('Offline');
 
   useEffect(() => {
     const tick = () => {
@@ -17,7 +16,6 @@ export function SystemStatus() {
       if (!lastPacketTime) {
         setDevStatus('Offline');
         setSignalQuality('None');
-        setSensorHealth('Offline');
         return;
       }
       const age = Date.now() - lastPacketTime;
@@ -41,7 +39,7 @@ export function SystemStatus() {
         setSignalQuality('Poor');
       }
 
-      setSensorHealth(age < baseInterval * 3 ? 'Online' : 'Offline');
+
     };
 
     // Run immediately so there's no initial blank state
@@ -58,12 +56,7 @@ export function SystemStatus() {
     { label: 'Signal Quality', value: signalQuality, status: signalQuality === 'Excellent' ? 'bg-success' : signalQuality === 'Fair' ? 'bg-status-moderate' : 'bg-danger' },
   ];
 
-  const sensors = [
-    { label: 'AQI Sensor', status: sensorHealth, state: sensorHealth === 'Online' ? 'good' : 'bad' },
-    { label: 'CO₂ Sensor', status: sensorHealth, state: sensorHealth === 'Online' ? 'good' : 'bad' },
-    { label: 'VOC Sensor', status: sensorHealth, state: sensorHealth === 'Online' ? 'good' : 'bad' },
-    { label: 'PM Sensor', status: sensorHealth, state: sensorHealth === 'Online' ? 'good' : 'bad' },
-  ];
+
 
   return (
     <div className="flex flex-col gap-[24px] opacity-[0.80]">
@@ -77,23 +70,6 @@ export function SystemStatus() {
                 <span className="text-[14px] font-medium text-neutral-600">{op.label}</span>
               </div>
               <span className="text-[14px] font-bold text-neutral-800">{op.value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-white rounded-[16px] shadow-soft p-[24px]">
-        <h2 className="text-[16px] font-bold text-neutral-800 mb-6">Sensor Health</h2>
-        <div className="flex flex-col gap-4">
-          {sensors.map((sensor, idx) => (
-            <div key={idx} className="flex items-center justify-between bg-neutral-50 p-3 rounded-lg border border-neutral-100">
-              <span className="text-[13px] font-semibold text-neutral-600">{sensor.label}</span>
-              <span className={cn(
-                "text-[12px] font-bold uppercase tracking-wider px-2 py-1 rounded-md",
-                sensor.state === 'good' ? "bg-status-good/10 text-status-good" : "bg-danger/10 text-danger"
-              )}>
-                {sensor.status}
-              </span>
             </div>
           ))}
         </div>

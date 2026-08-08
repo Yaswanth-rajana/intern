@@ -12,7 +12,7 @@ export function ConnectionStatus() {
   ];
 
   return (
-    <footer className="mt-8 pt-4 pb-6 flex items-center justify-center border-t border-neutral-200">
+    <footer className="mt-4 pt-3 pb-3 flex items-center justify-center border-t border-neutral-200">
       <div className="flex flex-wrap items-center gap-8">
         {statuses.map((item) => (
           <div key={item.label} className="flex items-center gap-2">

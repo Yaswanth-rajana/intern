@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
-import { Wind, Lock, User, LogIn, AlertCircle } from 'lucide-react';
+import { Wind, Lock, User, LogIn, AlertCircle, Eye, EyeOff, ShieldCheck, Activity, Cpu } from 'lucide-react';
 import { motion } from 'framer-motion';
+import loginBanner from '../../assets/login_banner.png';
 
 export function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState('');
-  
+
   const login = useAuthStore(state => state.login);
   const isLoading = useAuthStore(state => state.isLoading);
   const apiError = useAuthStore(state => state.error);
@@ -19,138 +21,183 @@ export function Login() {
     clearError();
 
     if (!username.trim()) {
-      setLocalError('Please enter username');
+      setLocalError('Please enter your username');
       return;
     }
     if (!password) {
-      setLocalError('Please enter password');
+      setLocalError('Please enter your password');
       return;
     }
 
     await login(username, password);
   };
 
-  const handlePresetLogin = async (userPreset, passPreset) => {
-    setLocalError('');
-    clearError();
-    setUsername(userPreset);
-    setPassword(passPreset);
-    await login(userPreset, passPreset);
-  };
-
   const errorMsg = localError || apiError;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-900 via-[#1a1f2e] to-neutral-900 p-6">
-      
-      {/* Dynamic particles or visual background */}
-      <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#3b82f6_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none"></div>
+    <div className="min-h-screen w-full flex bg-neutral-950 text-neutral-100 font-sans overflow-hidden">
 
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-[440px] bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl p-8 border border-white/20 z-10"
-      >
-        
-        {/* Logo Section */}
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-primary/30 mb-3">
-            <Wind className="w-8 h-8 text-white animate-pulse" />
+      {/* LEFT SECTION: Login Form */}
+      <div className="w-full lg:w-1/2 flex flex-col justify-between p-6 sm:p-12 lg:p-16 relative z-10 bg-neutral-950/80 backdrop-blur-xl">
+
+        {/* Top Brand Bar */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/30 shrink-0">
+            <Wind className="w-5 h-5 text-white animate-pulse" />
           </div>
-          <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Welcome to AeroSense</h1>
-          <p className="text-neutral-500 text-sm mt-1 text-center">Indoor Air Quality Monitoring Platform</p>
+          <span className="text-xl font-bold tracking-wide text-white">AeroSense</span>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-5">
-          
-          {errorMsg && (
-            <motion.div 
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-2.5 bg-danger/10 text-danger p-3 rounded-lg border border-danger/20 text-xs font-semibold"
-            >
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMsg}</span>
-            </motion.div>
-          )}
+        {/* Center Login Form */}
+        <div className="w-full max-w-md mx-auto my-auto py-8">
 
-          <div>
-            <label className="block text-[11px] font-bold text-neutral-400 uppercase tracking-wider mb-2">Username</label>
-            <div className="relative">
-              <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-              <input 
-                type="text" 
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter your username" 
-                className="w-full pl-10 pr-4 py-3 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-800 text-[14px] font-medium outline-none focus:border-primary focus:bg-white transition-all shadow-sm"
-              />
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+          >
+            <div className="mb-8">
+              <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-2 leading-tight">
+                Welcome back
+              </h1>
+              <p className="text-neutral-400 text-sm leading-relaxed">
+                Sign in to your AeroSense dashboard and monitor your indoor environment in real time.
+              </p>
             </div>
-          </div>
 
-          <div>
-            <label className="block text-[11px] font-bold text-neutral-400 uppercase tracking-wider mb-2">Password</label>
-            <div className="relative">
-              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-              <input 
-                type="password" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••" 
-                className="w-full pl-10 pr-4 py-3 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-800 text-[14px] font-medium outline-none focus:border-primary focus:bg-white transition-all shadow-sm"
-              />
+            <form onSubmit={handleSubmit} className="space-y-5">
+
+              {errorMsg && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-center gap-3 bg-rose-500/10 border border-rose-500/30 text-rose-400 p-3.5 rounded-xl text-xs font-semibold"
+                >
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                  <span>{errorMsg}</span>
+                </motion.div>
+              )}
+
+              {/* Username Field */}
+              <div>
+                <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">
+                  Username
+                </label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Enter username"
+                    required
+                    className="w-full pl-10 pr-4 py-3.5 bg-neutral-900/90 border border-neutral-800 rounded-xl text-white text-sm font-medium outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all placeholder-neutral-600"
+                  />
+                </div>
+              </div>
+
+              {/* Password Field */}
+              <div>
+                <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">
+                  Password
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    className="w-full pl-10 pr-11 py-3.5 bg-neutral-900/90 border border-neutral-800 rounded-xl text-white text-sm font-medium outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all placeholder-neutral-600"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300 transition-colors p-1"
+                    title={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full flex items-center justify-center gap-2 py-3.5 bg-primary hover:bg-primary/90 text-white font-bold text-sm rounded-xl transition-all shadow-lg shadow-primary/25 disabled:opacity-50 mt-4 cursor-pointer"
+              >
+                {isLoading ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <>
+                    <LogIn className="w-4 h-4" />
+                    <span>Sign In</span>
+                  </>
+                )}
+              </button>
+            </form>
+          </motion.div>
+        </div>
+
+        {/* Footer Status */}
+        <div className="flex items-center justify-between text-xs text-neutral-500 border-t border-neutral-900 pt-4">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Platform Operational</span>
+          </div>
+          <span>AeroSense &copy; {new Date().getFullYear()}</span>
+        </div>
+
+      </div>
+
+      {/* RIGHT SECTION: Image Banner & Feature Showcase */}
+      <div className="hidden lg:flex lg:w-1/2 relative bg-neutral-900 items-center justify-center overflow-hidden border-l border-neutral-800/60">
+
+        {/* Background Image */}
+        <img
+          src={loginBanner}
+          alt="AeroSense Air Quality Platform Showcase"
+          className="absolute inset-0 w-full h-full object-cover object-center opacity-85 scale-105 transition-transform duration-1000 hover:scale-100"
+        />
+
+        {/* Vignette Gradient Overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/40 to-neutral-950/20"></div>
+        <div className="absolute inset-0 bg-gradient-to-r from-neutral-950 via-transparent to-transparent w-1/3"></div>
+
+        {/* Floating Content Card at Bottom */}
+        <div className="absolute bottom-12 left-12 right-12 z-20">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="bg-neutral-900/80 backdrop-blur-xl border border-white/10 p-6 rounded-2xl shadow-2xl space-y-4"
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="px-2.5 py-1 bg-primary/20 text-primary-light border border-primary/30 rounded-lg text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5" />
+                Real-Time Telemetry
+              </span>
+              <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                Role Secured
+              </span>
             </div>
-          </div>
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full flex items-center justify-center gap-2 py-3.5 bg-primary hover:bg-primary-dark text-white font-bold text-sm rounded-xl transition-all shadow-lg shadow-primary/25 disabled:opacity-50 mt-2"
-          >
-            {isLoading ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            ) : (
-              <>
-                <LogIn className="w-4 h-4" />
-                <span>Log In</span>
-              </>
-            )}
-          </button>
-        </form>
-
-        {/* Divider */}
-        <div className="relative my-8">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-neutral-200"></div>
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-white px-3 text-neutral-400 font-bold tracking-wider">Quick Presets</span>
-          </div>
+            <div>
+              <h3 className="text-xl font-bold text-white mb-1">
+                Advanced Indoor Air Quality Intelligence
+              </h3>
+              <p className="text-xs text-neutral-400 leading-relaxed">
+                Continuous MQTT sensor streams, dynamic AQI index calculation, custom threshold alerts, and fine-grained administrative access controls.
+              </p>
+            </div>
+          </motion.div>
         </div>
 
-        {/* Presets Grid */}
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={() => handlePresetLogin('admin', 'admin123')}
-            className="flex flex-col items-center justify-center p-3.5 bg-primary/5 hover:bg-primary/10 border border-primary/10 rounded-xl text-left transition-all group"
-          >
-            <span className="text-[13px] font-bold text-primary">Admin Account</span>
-            <span className="text-[10px] text-neutral-500 font-medium mt-1">Read & Write Access</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handlePresetLogin('viewer', 'viewer123')}
-            className="flex flex-col items-center justify-center p-3.5 bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 rounded-xl text-left transition-all group"
-          >
-            <span className="text-[13px] font-bold text-neutral-700">Viewer Account</span>
-            <span className="text-[10px] text-neutral-500 font-medium mt-1">Read-Only Access</span>
-          </button>
-        </div>
+      </div>
 
-      </motion.div>
     </div>
   );
 }
