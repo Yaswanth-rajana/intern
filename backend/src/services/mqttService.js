@@ -561,25 +561,133 @@ export const getLatestPayload = (deviceId) => {
   return device ? device.latestPayload : null;
 };
 
-export const getHistory = async (deviceId, page = 1, limit = 100, user = null) => {
-  if (!deviceId) return [];
+const downsample = (data, bucketSizeMs) => {
+  if (!data || data.length === 0) return [];
+  
+  const sorted = [...data].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  const buckets = {};
+  
+  sorted.forEach(item => {
+    const time = new Date(item.timestamp).getTime();
+    const bucketKey = Math.floor(time / bucketSizeMs) * bucketSizeMs;
+    if (!buckets[bucketKey]) {
+      buckets[bucketKey] = [];
+    }
+    buckets[bucketKey].push(item);
+  });
+  
+  const result = [];
+  const sensorKeys = ['AQI', 'CO2', 'VOC', 'Temperature', 'Humidity', 'PM1_0', 'PM2_5', 'PM4_0', 'PM10', 'NOX'];
+  
+  Object.entries(buckets).forEach(([bucketKey, items]) => {
+    const keyNum = parseInt(bucketKey);
+    const avg = {
+      timestamp: new Date(keyNum).toISOString(),
+      deviceId: items[0].deviceId,
+      sensors: {}
+    };
+    
+    sensorKeys.forEach(k => {
+      let sum = 0;
+      let validCount = 0;
+      items.forEach(it => {
+        const val = it.sensors?.[k] !== undefined ? it.sensors[k] : it[k];
+        if (val !== undefined && val !== null) {
+          sum += val;
+          validCount++;
+        }
+      });
+      if (validCount > 0) {
+        avg.sensors[k] = parseFloat((sum / validCount).toFixed(1));
+      }
+    });
+    result.push(avg);
+  });
+  return result;
+};
+
+export const getHistory = async (deviceId, page = 1, limit = 100, user = null, range = null, start = null, end = null) => {
+  if (!deviceId) return { data: [], isMocked: false };
   if (user) {
     const hasAccess = await verifyDeviceTenantAccess(deviceId, user);
-    if (!hasAccess) return [];
+    if (!hasAccess) return { data: [], isMocked: false };
   }
 
-  const skip = (page - 1) * limit;
+  let queryStart = start ? new Date(start) : null;
+  let queryEnd = end ? new Date(end) : null;
+  
+  if (range && range !== 'live') {
+    const now = Date.now();
+    queryEnd = queryEnd || new Date(now);
+    if (range === '1h') queryStart = new Date(now - 1 * 60 * 60 * 1000);
+    else if (range === '24h') queryStart = new Date(now - 24 * 60 * 60 * 1000);
+    else if (range === '7d') queryStart = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    else if (range === '30d') queryStart = new Date(now - 30 * 24 * 60 * 60 * 1000);
+  }
+
   try {
-    const history = await SensorHistory.find({ deviceId })
-      .sort({ timestamp: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean();
-    return history.map(h => h.rawPayload);
+    const dbQuery = { deviceId };
+    if (queryStart || queryEnd) {
+      dbQuery.timestamp = {};
+      if (queryStart) dbQuery.timestamp.$gte = queryStart;
+      if (queryEnd) dbQuery.timestamp.$lte = queryEnd;
+    }
+
+    let history;
+    if (range && range !== 'live') {
+      history = await SensorHistory.find(dbQuery)
+        .sort({ timestamp: -1 })
+        .limit(10000)
+        .lean();
+    } else {
+      const skip = (page - 1) * limit;
+      history = await SensorHistory.find(dbQuery)
+        .sort({ timestamp: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
+    }
+
+    let payloads = history.map(h => h.rawPayload || {
+      deviceId: h.deviceId,
+      timestamp: h.timestamp,
+      sensors: {
+        AQI: h.AQI,
+        CO2: h.CO2,
+        VOC: h.VOC,
+        Temperature: h.Temperature,
+        Humidity: h.Humidity,
+        PM1_0: h.PM1_0,
+        PM2_5: h.PM2_5,
+        PM4_0: h.PM4_0,
+        PM10: h.PM10,
+        NOX: h.NOX
+      }
+    });
+
+    console.log(`[History Query] Device: ${deviceId}, Range: ${range}`);
+    console.log(`  - Computed Window: ${queryStart ? queryStart.toISOString() : 'N/A'} to ${queryEnd ? queryEnd.toISOString() : 'N/A'}`);
+    console.log(`  - Raw Database Records Found: ${payloads.length}`);
+
+    if (range && range !== 'live') {
+      let bucketSize = 0;
+      if (range === '1h') bucketSize = 60 * 1000;
+      else if (range === '24h') bucketSize = 5 * 60 * 1000;
+      else if (range === '7d') bucketSize = 60 * 60 * 1000;
+      else if (range === '30d') bucketSize = 6 * 60 * 60 * 1000;
+
+      if (bucketSize > 0) {
+        payloads = downsample(payloads, bucketSize);
+      }
+    }
+
+    return { data: payloads, isMocked: false };
   } catch (err) {
     console.error('Error fetching history:', err);
+    const skip = (page - 1) * limit;
     const device = devices.get(deviceId);
-    return device ? device.history.slice(skip, skip + limit) : [];
+    const fallback = device ? device.history.slice(skip, skip + limit) : [];
+    return { data: fallback, isMocked: false };
   }
 };
 

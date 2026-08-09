@@ -120,6 +120,45 @@ const seedDatabase = async () => {
       await seedTenantThresholds(t._id);
     }
 
+    // 5. Ensure Default Demo Devices exist
+    const demoDevices = [
+      {
+        deviceId: 'DEMO-OFFICE-01',
+        name: 'Main Office',
+        firmwareVersion: '1.2.3',
+        hardwareVersion: 'T113i-RevA',
+        location: 'Main Office',
+        status: 'UNASSIGNED',
+        tenantId: null
+      },
+      {
+        deviceId: 'DEMO-OFFICE-02',
+        name: 'Conference Room',
+        firmwareVersion: '1.2.1',
+        hardwareVersion: 'T113i-RevB',
+        location: 'Conference Room',
+        status: 'UNASSIGNED',
+        tenantId: null
+      },
+      {
+        deviceId: 'DEMO-FACTORY-01',
+        name: 'Main Factory',
+        firmwareVersion: '1.3.0',
+        hardwareVersion: 'T113i-RevC',
+        location: 'Main Factory',
+        status: 'UNASSIGNED',
+        tenantId: null
+      }
+    ];
+
+    for (const dev of demoDevices) {
+      const existingDev = await Device.findOne({ deviceId: dev.deviceId });
+      if (!existingDev) {
+        await Device.create(dev);
+        console.log(`✓ Seeded Demo Device: ${dev.deviceId}`);
+      }
+    }
+
     console.log('✓ Phase 3 multi-tenant threshold migration check completed cleanly');
   } catch (error) {
     console.error('✗ Database Seeder failed:', error.message);

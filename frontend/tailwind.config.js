@@ -56,7 +56,7 @@ export default {
         }
       },
       fontFamily: {
-        sans: ['Inter', 'Roboto', 'sans-serif'],
+        sans: ['Poppins', 'Inter', 'Roboto', 'sans-serif'],
       },
       fontSize: {
         'small-label': '13px',

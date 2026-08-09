@@ -15,6 +15,9 @@ import { useDashboardStore } from '../../store/dashboardStore';
 export function Dashboard() {
   const uiState = useDashboardStore(state => state.ui.state);
   const sensors = useDashboardStore(state => state.sensors.latest);
+  const visibleMetrics = useDashboardStore(state => state.visibleMetrics);
+  const toggleMetric = useDashboardStore(state => state.toggleMetric);
+  const setHoveredMetric = useDashboardStore(state => state.setHoveredMetric);
   const isLoading = uiState === 'initialLoading';
 
   const metricsConfig = [
@@ -67,6 +70,10 @@ export function Dashboard() {
                   value={metric.value}
                   unit={metric.unit}
                   statusObj={getSensorStatus(metric.key, metric.value)}
+                  isToggledOff={false}
+                  onClick={() => toggleMetric(metric.key)}
+                  onMouseEnter={() => setHoveredMetric(metric.key)}
+                  onMouseLeave={() => setHoveredMetric(null)}
                 />
               </motion.div>
             ))

@@ -41,8 +41,10 @@ export const fetchDeviceLatest = async (deviceId) => {
   return response.data;
 };
 
-export const fetchDeviceHistory = async (deviceId) => {
-  const response = await apiClient.get(`/devices/${deviceId}/history`);
+export const fetchDeviceHistory = async (deviceId, range) => {
+  const params = {};
+  if (range) params.range = range;
+  const response = await apiClient.get(`/devices/${deviceId}/history`, { params });
   return response.data;
 };
 
