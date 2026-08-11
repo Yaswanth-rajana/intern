@@ -28,7 +28,7 @@ const SENSOR_DISPLAY_NAMES = {
 };
 const getSensorLabel = (key) => SENSOR_DISPLAY_NAMES[key] || key;
 
-const generateAlarmsList = (sensors, prevAlarms = [], timeStr = new Date().toLocaleTimeString()) => {
+const generateAlarmsList = (sensors, prevAlarms = [], timeStr = new Date().toLocaleTimeString(), deviceId = null, deviceName = null) => {
   let newAlarms = [...prevAlarms];
   const now = Date.now();
 
@@ -37,8 +37,8 @@ const generateAlarmsList = (sensors, prevAlarms = [], timeStr = new Date().toLoc
 
     const currentStatus = getSensorStatus(key, value);
     
-    // Find if there's already an active alarm for this sensor
-    const activeAlarmIdx = newAlarms.findIndex(a => a.sensor === key && a.status === 'Active');
+    // Find if there's already an active alarm for this sensor and device
+    const activeAlarmIdx = newAlarms.findIndex(a => a.sensor === key && a.deviceId === deviceId && a.status === 'Active');
 
     if (currentStatus.color === 'yellow' || currentStatus.color === 'orange') {
       // Should have a Warning alarm
@@ -51,7 +51,7 @@ const generateAlarmsList = (sensors, prevAlarms = [], timeStr = new Date().toLoc
             timestamp: timeStr,
             value,
             severity: 'Warning',
-            message: `${getSensorLabel(key)} reached warning level (${value} - ${currentStatus.label})`,
+            message: `${deviceName ? deviceName + ': ' : ''}${getSensorLabel(key)} reached warning level (${value} - ${currentStatus.label})`,
             threshold: 'Warning Limit'
           };
         } else {
@@ -60,14 +60,17 @@ const generateAlarmsList = (sensors, prevAlarms = [], timeStr = new Date().toLoc
         }
       } else {
         // Add new warning alarm
+        const devicePrefix = deviceName ? `${deviceName} (${deviceId})` : (deviceId || '');
         newAlarms.unshift({
-          id: `${key}-warning-${now}`,
+          id: `${deviceId ? deviceId + '-' : ''}${key}-warning-${now}`,
           timestamp: timeStr,
           sensor: key,
+          deviceId: deviceId,
+          deviceName: deviceName,
           value: value,
           threshold: 'Warning Limit',
           severity: 'Warning',
-          message: `${getSensorLabel(key)} reached warning level (${value} - ${currentStatus.label})`,
+          message: `${devicePrefix ? devicePrefix + ': ' : ''}${getSensorLabel(key)} reached warning level (${value} - ${currentStatus.label})`,
           status: 'Active'
         });
       }
@@ -82,7 +85,7 @@ const generateAlarmsList = (sensors, prevAlarms = [], timeStr = new Date().toLoc
             timestamp: timeStr,
             value,
             severity: 'Critical',
-            message: `${getSensorLabel(key)} reached critical level (${value} - ${currentStatus.label})`,
+            message: `${deviceName ? deviceName + ': ' : ''}${getSensorLabel(key)} reached critical level (${value} - ${currentStatus.label})`,
             threshold: 'Critical Limit'
           };
         } else {
@@ -91,14 +94,17 @@ const generateAlarmsList = (sensors, prevAlarms = [], timeStr = new Date().toLoc
         }
       } else {
         // Add new critical alarm
+        const devicePrefix = deviceName ? `${deviceName} (${deviceId})` : (deviceId || '');
         newAlarms.unshift({
-          id: `${key}-critical-${now}`,
+          id: `${deviceId ? deviceId + '-' : ''}${key}-critical-${now}`,
           timestamp: timeStr,
           sensor: key,
+          deviceId: deviceId,
+          deviceName: deviceName,
           value: value,
           threshold: 'Critical Limit',
           severity: 'Critical',
-          message: `${getSensorLabel(key)} reached critical level (${value} - ${currentStatus.label})`,
+          message: `${devicePrefix ? devicePrefix + ': ' : ''}${getSensorLabel(key)} reached critical level (${value} - ${currentStatus.label})`,
           status: 'Active'
         });
       }
@@ -110,7 +116,7 @@ const generateAlarmsList = (sensors, prevAlarms = [], timeStr = new Date().toLoc
           ...existing,
           status: 'Resolved',
           severity: 'Info',
-          message: `${getSensorLabel(key)} returned to normal levels (${value} - ${currentStatus.label})`,
+          message: `${deviceName ? deviceName + ': ' : ''}${getSensorLabel(key)} returned to normal levels (${value} - ${currentStatus.label})`,
           timestamp: timeStr
         };
       }
@@ -375,19 +381,32 @@ export const useDashboardStore = create((set, get) => ({
           NOX: latestData.sensors.NOX,
         } : {};
 
+        const updatedDevices = devices.map(d => {
+          if (d.deviceId === defaultDevice) {
+            return {
+              ...d,
+              latestSensors
+            };
+          }
+          return d;
+        });
+
         return {
-          deviceList: devices,
+          deviceList: updatedDevices,
           selectedDeviceId: defaultDevice,
           thresholds: dbThresholds,
           history: newHistory,
           sensors: { latest: latestSensors },
           alarms: {
-            activeAlarms: generateAlarmsList(latestSensors, [], new Date().toLocaleTimeString()),
-            alarmLog: generateAlarmsList(latestSensors, [], new Date().toLocaleTimeString()),
+            activeAlarms: generateAlarmsList(latestSensors, [], new Date().toLocaleTimeString(), defaultDevice, latestData?.name || defaultDevice),
+            alarmLog: generateAlarmsList(latestSensors, [], new Date().toLocaleTimeString(), defaultDevice, latestData?.name || defaultDevice),
           },
           device: {
             ...state.device,
-            info: latestData || {},
+            info: {
+              ...(devices.find(d => d.deviceId === defaultDevice) || {}),
+              ...latestData
+            },
             lastPacketTime: latestData ? Date.now() : null,
           },
           system: {
@@ -488,18 +507,32 @@ export const useDashboardStore = create((set, get) => ({
           NOX: latestData.sensors.NOX,
         } : {};
 
+        const updatedDevices = state.deviceList.map(d => {
+          if (d.deviceId === deviceId) {
+            return {
+              ...d,
+              latestSensors
+            };
+          }
+          return d;
+        });
+
         return {
+          deviceList: updatedDevices,
           history: newHistory,
           isHistoryLoading: false,
           isHistoryMocked: isMocked,
           sensors: { latest: latestSensors },
           alarms: {
-            activeAlarms: generateAlarmsList(latestSensors, [], new Date().toLocaleTimeString()),
-            alarmLog: generateAlarmsList(latestSensors, [], new Date().toLocaleTimeString()),
+            activeAlarms: generateAlarmsList(latestSensors, [], new Date().toLocaleTimeString(), deviceId, latestData?.name || deviceId),
+            alarmLog: generateAlarmsList(latestSensors, [], new Date().toLocaleTimeString(), deviceId, latestData?.name || deviceId),
           },
           device: {
             ...state.device,
-            info: latestData || {},
+            info: {
+              ...(updatedDevices.find(d => d.deviceId === deviceId) || {}),
+              ...latestData
+            },
             lastPacketTime: latestData ? Date.now() : null,
           },
           ui: { state: 'live' }
@@ -539,6 +572,12 @@ export const useDashboardStore = create((set, get) => ({
       const now = Date.now();
       const nowIso = new Date(now).toISOString();
 
+      // Find the device in the device list to get its name
+      const deviceObj = state.deviceList.find(d => d.deviceId === payload.deviceId);
+      const deviceName = deviceObj ? (deviceObj.name || deviceObj.deviceId) : payload.deviceId;
+      // Get previous sensor readings cached on the device
+      const prevSensors = deviceObj?.latestSensors || {};
+
       // Update deviceList for the target device
       const updatedList = state.deviceList.map(d => {
         if (d.deviceId === payload.deviceId) {
@@ -551,18 +590,24 @@ export const useDashboardStore = create((set, get) => ({
             latestAQI: payload.sensors?.AQI,
             latestCO2: payload.sensors?.CO2,
             latestTemperature: payload.sensors?.Temperature,
-            latestHumidity: payload.sensors?.Humidity
+            latestHumidity: payload.sensors?.Humidity,
+            latestSensors: {
+              AQI: payload.sensors.AQI,
+              CO2: payload.sensors.CO2,
+              VOC: payload.sensors.VOC,
+              Temperature: payload.sensors.Temperature,
+              Humidity: payload.sensors.Humidity,
+              PM1_0: payload.sensors.PM1_0 || payload.sensors['PM1.0'],
+              PM2_5: payload.sensors.PM2_5 || payload.sensors['PM2.5'],
+              PM4_0: payload.sensors.PM4_0 || payload.sensors['PM4.0'],
+              PM10: payload.sensors.PM10,
+              NOX: payload.sensors.NOX,
+            }
           };
         }
         return d;
       });
 
-      // If it's for a different device, update only the list silently
-      if (payload.deviceId !== state.selectedDeviceId) {
-        return { deviceList: updatedList };
-      }
-
-      // Process for current selected device
       const timeStr = new Date(now).toLocaleTimeString();
       
       const normalizedSensors = {
@@ -578,7 +623,13 @@ export const useDashboardStore = create((set, get) => ({
         NOX: payload.sensors.NOX,
       };
 
-        let newHistory = state.history;
+      // Process history and stats only for the currently selected device
+      let newHistory = state.history;
+      let newDevice = state.device;
+      let newSensors = state.sensors;
+      let newStats = state.stats;
+
+      if (payload.deviceId === state.selectedDeviceId) {
         if (state.timeRange === 'live') {
           const newHistoryPoint = {
             timestamp: nowIso,
@@ -590,12 +641,37 @@ export const useDashboardStore = create((set, get) => ({
             newHistory = newHistory.slice(newHistory.length - HISTORY_LIMIT);
           }
         }
+         const newTotalPackets = state.device.totalPackets + 1;
+        newDevice = {
+          ...state.device,
+          info: {
+            ...(updatedList.find(d => d.deviceId === payload.deviceId) || {}),
+            ...payload
+          },
+          lastPacketTime: now,
+          totalPackets: newTotalPackets,
+        };
+        newSensors = {
+          latest: normalizedSensors
+        };
+        const newMessagesToday = state.stats.messagesToday + 1;
+        const newFirstPacketTime = state.stats.firstPacketTime || now;
+        let newAvgInterval = state.stats.avgPacketInterval;
+        if (state.device.lastPacketTime) {
+          const interval = now - state.device.lastPacketTime;
+          newAvgInterval = state.device.totalPackets === 0 ? interval : (state.stats.avgPacketInterval * state.device.totalPackets + interval) / newTotalPackets;
+        }
+        newStats = {
+          messagesToday: newMessagesToday,
+          firstPacketTime: newFirstPacketTime,
+          avgPacketInterval: newAvgInterval,
+        };
+      }
 
-      // Update current-state alarm snapshot (one entry per sensor)
-      const newAlarms = generateAlarmsList(normalizedSensors, state.alarms.activeAlarms, timeStr);
+      // Update current-state alarm snapshot (one entry per sensor per device)
+      const newAlarms = generateAlarmsList(normalizedSensors, state.alarms.activeAlarms, timeStr, payload.deviceId, deviceName);
 
       // Build alarm log based on SEVERITY TRANSITIONS per sensor
-      // (ID-dedup doesn't work because the same ID is reused for the same active sensor)
       const getSeverityTier = (color) => {
         if (color === 'red')                          return 'Critical';
         if (color === 'yellow' || color === 'orange') return 'Warning';
@@ -607,7 +683,7 @@ export const useDashboardStore = create((set, get) => ({
       Object.entries(normalizedSensors).forEach(([key, value]) => {
         if (value === undefined || value === null) return;
 
-        const prevValue       = state.sensors.latest[key];
+        const prevValue       = prevSensors[key];
         const currentStatus   = getSensorStatus(key, value);
         const prevStatus      = prevValue !== undefined
           ? getSensorStatus(key, prevValue)
@@ -618,17 +694,20 @@ export const useDashboardStore = create((set, get) => ({
 
         // Only log when the severity tier actually changes
         if (currentTier !== prevTier) {
-          const logId = `${key}-${currentTier.toLowerCase()}-${now}`;
+          const logId = `${payload.deviceId}-${key}-${currentTier.toLowerCase()}-${now}`;
+          const devicePrefix = deviceName ? `${deviceName} (${payload.deviceId})` : payload.deviceId;
           if (currentTier === 'Warning') {
             newAlarmLog.unshift({
               id: logId,
               timestamp: timeStr,
               loggedAt: new Date().toISOString(),
               sensor: key,
+              deviceId: payload.deviceId,
+              deviceName: deviceName,
               value,
               threshold: 'Warning Limit',
               severity: 'Warning',
-              message: `${getSensorLabel(key)} reached warning level (${value} - ${currentStatus.label})`,
+              message: `${devicePrefix}: ${getSensorLabel(key)} reached warning level (${value} - ${currentStatus.label})`,
               status: 'Active',
             });
           } else if (currentTier === 'Critical') {
@@ -637,10 +716,12 @@ export const useDashboardStore = create((set, get) => ({
               timestamp: timeStr,
               loggedAt: new Date().toISOString(),
               sensor: key,
+              deviceId: payload.deviceId,
+              deviceName: deviceName,
               value,
               threshold: 'Critical Limit',
               severity: 'Critical',
-              message: `${getSensorLabel(key)} reached critical level (${value} - ${currentStatus.label})`,
+              message: `${devicePrefix}: ${getSensorLabel(key)} reached critical level (${value} - ${currentStatus.label})`,
               status: 'Active',
             });
           } else {
@@ -650,10 +731,12 @@ export const useDashboardStore = create((set, get) => ({
               timestamp: timeStr,
               loggedAt: new Date().toISOString(),
               sensor: key,
+              deviceId: payload.deviceId,
+              deviceName: deviceName,
               value,
               threshold: 'Normal',
               severity: 'Info',
-              message: `${getSensorLabel(key)} returned to normal (${value} - ${currentStatus.label})`,
+              message: `${devicePrefix}: ${getSensorLabel(key)} returned to normal (${value} - ${currentStatus.label})`,
               status: 'Resolved',
             });
           }
@@ -662,36 +745,16 @@ export const useDashboardStore = create((set, get) => ({
 
       if (newAlarmLog.length > 500) newAlarmLog = newAlarmLog.slice(0, 500);
 
-      const newTotalPackets = state.device.totalPackets + 1;
-      const newMessagesToday = state.stats.messagesToday + 1;
-      const newFirstPacketTime = state.stats.firstPacketTime || now;
-      let newAvgInterval = state.stats.avgPacketInterval;
-      if (state.device.lastPacketTime) {
-        const interval = now - state.device.lastPacketTime;
-        newAvgInterval = state.device.totalPackets === 0 ? interval : (state.stats.avgPacketInterval * state.device.totalPackets + interval) / newTotalPackets;
-      }
-
       return {
         deviceList: updatedList,
-        device: {
-          ...state.device,
-          info: payload,
-          lastPacketTime: now,
-          totalPackets: newTotalPackets,
-        },
-        sensors: {
-          latest: normalizedSensors
-        },
+        device: newDevice,
+        sensors: newSensors,
         history: newHistory,
         alarms: {
           activeAlarms: newAlarms,
           alarmLog: newAlarmLog,
         },
-        stats: {
-          messagesToday: newMessagesToday,
-          firstPacketTime: newFirstPacketTime,
-          avgPacketInterval: newAvgInterval,
-        },
+        stats: newStats,
         ui: { state: 'live' }
       };
     });
@@ -760,7 +823,10 @@ export const useDashboardStore = create((set, get) => ({
         }
 
         // Recalculate alarms immediately with updated thresholds
-        const newAlarms = generateAlarmsList(state.sensors.latest, state.alarms.activeAlarms);
+        const deviceId = state.selectedDeviceId;
+        const deviceObj = state.deviceList.find(d => d.deviceId === deviceId);
+        const deviceName = deviceObj ? (deviceObj.name || deviceObj.deviceId) : deviceId;
+        const newAlarms = generateAlarmsList(state.sensors.latest, state.alarms.activeAlarms, new Date().toLocaleTimeString(), deviceId, deviceName);
         let newLog = [...state.alarms.alarmLog];
         newAlarms.forEach(alarm => {
           if (!newLog.find(l => l.id === alarm.id)) {

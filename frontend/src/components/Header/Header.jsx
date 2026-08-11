@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Bell, ChevronDown, LogOut, Menu } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
-export function Header({ isConnected = true, lastPacketTime = null, alarmCount = 0, onMenuClick }) {
+export function Header({ isConnected = true, lastPacketTime = null, alarmCount = 0, onMenuClick, onNotificationClick }) {
   const user = useAuthStore(state => state.user);
   const logout = useAuthStore(state => state.logout);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -92,6 +92,7 @@ export function Header({ isConnected = true, lastPacketTime = null, alarmCount =
 
         {/* Bell */}
         <button
+          onClick={onNotificationClick}
           className="w-10 h-10 flex items-center justify-center text-neutral-500 hover:text-neutral-800 hover:bg-black/5 rounded-full transition-all relative"
           title="Notifications"
         >

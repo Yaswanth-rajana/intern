@@ -74,8 +74,8 @@ router.post('/register', requireRole('SUPER_ADMIN'), async (req, res) => {
   }
 });
 
-// PATCH /devices/:deviceId - Update device location / name (SUPER_ADMIN only)
-router.patch('/:deviceId', requireRole('SUPER_ADMIN'), async (req, res) => {
+// PATCH /devices/:deviceId - Update device location / name (SUPER_ADMIN or CLIENT_ADMIN)
+router.patch('/:deviceId', requireRole('SUPER_ADMIN', 'CLIENT_ADMIN'), async (req, res) => {
   try {
     const { deviceId } = req.params;
     const { location, name } = req.body;

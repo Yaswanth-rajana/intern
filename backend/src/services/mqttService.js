@@ -76,8 +76,7 @@ export const registerDeviceInCache = (deviceDoc) => {
   devices.set(deviceDoc.deviceId, formatted);
   
   try {
-    const io = getIO();
-    getDeviceList().then(list => io.emit('deviceListUpdated', list));
+    broadcastDeviceListUpdated();
   } catch (e) {}
 };
 
@@ -184,8 +183,7 @@ setInterval(async () => {
           io.to(`tenant:${tenantId}`).emit('deviceStatusChanged', { deviceId, status: targetStatus });
         }
         io.to('superadmin_room').emit('deviceStatusChanged', { deviceId, status: targetStatus });
-        const updatedList = await getDeviceList();
-        io.emit('deviceListUpdated', updatedList);
+        broadcastDeviceListUpdated();
       } catch (err) {}
     }
   }
@@ -468,8 +466,7 @@ export const initMqttService = () => {
             io.to(`tenant:${trustedTenantId}`).emit('deviceStatusChanged', { deviceId, status: device.status });
           }
           io.to('superadmin_room').emit('deviceStatusChanged', { deviceId, status: device.status });
-          const updatedList = await getDeviceList();
-          io.emit('deviceListUpdated', updatedList);
+          broadcastDeviceListUpdated();
         }
       } catch (ioError) {
         console.error('Socket.IO emit error:', ioError.message);
@@ -598,7 +595,12 @@ const downsample = (data, bucketSizeMs) => {
       let sum = 0;
       let validCount = 0;
       items.forEach(it => {
-        const val = it.sensors?.[k] !== undefined ? it.sensors[k] : it[k];
+        let val = it.sensors?.[k] !== undefined ? it.sensors[k] : it[k];
+        if (val === undefined || val === null) {
+          // Fallback to dot format (e.g. PM2.5 instead of PM2_5)
+          const dotKey = k.replace('_', '.');
+          val = it.sensors?.[dotKey] !== undefined ? it.sensors[dotKey] : it[dotKey];
+        }
         if (val !== undefined && val !== null) {
           sum += val;
           validCount++;
@@ -734,6 +736,20 @@ export const disconnectMqtt = () => {
   }
 };
 
+export const broadcastDeviceListUpdated = async () => {
+  try {
+    const io = getIO();
+    for (const socket of io.sockets.sockets.values()) {
+      if (socket.user) {
+        const list = await getDeviceList(socket.user);
+        socket.emit('deviceListUpdated', list);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to broadcast deviceListUpdated:', err.message);
+  }
+};
+
 export const updateDeviceLocation = async (deviceId, location, name = null) => {
   const updateDoc = {};
   if (location !== null && location !== undefined) updateDoc.location = location;
@@ -747,13 +763,7 @@ export const updateDeviceLocation = async (deviceId, location, name = null) => {
     if (name !== null && name !== undefined) cachedDevice.name = name;
   }
 
-  try {
-    const io = getIO();
-    const updatedList = await getDeviceList();
-    io.emit('deviceListUpdated', updatedList);
-  } catch (err) {
-    console.error('Socket.IO emit error:', err.message);
-  }
+  await broadcastDeviceListUpdated();
 };
 
 export const updateDeviceTenant = async (deviceId, tenantId, location = null) => {
@@ -770,13 +780,7 @@ export const updateDeviceTenant = async (deviceId, tenantId, location = null) =>
     if (location) cachedDevice.location = location;
   }
 
-  try {
-    const io = getIO();
-    const updatedList = await getDeviceList();
-    io.emit('deviceListUpdated', updatedList);
-  } catch (err) {
-    console.error('Socket.IO emit error:', err.message);
-  }
+  await broadcastDeviceListUpdated();
 };
 
 export const unassignDeviceTenant = async (deviceId) => {
@@ -788,11 +792,5 @@ export const unassignDeviceTenant = async (deviceId) => {
     cachedDevice.status = 'UNASSIGNED';
   }
 
-  try {
-    const io = getIO();
-    const updatedList = await getDeviceList();
-    io.emit('deviceListUpdated', updatedList);
-  } catch (err) {
-    console.error('Socket.IO emit error:', err.message);
-  }
+  await broadcastDeviceListUpdated();
 };

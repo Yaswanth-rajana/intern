@@ -24,6 +24,7 @@ function App() {
   const device     = useDashboardStore(state => state.device);
   const alarms     = useDashboardStore(state => state.alarms.activeAlarms);
   const activeTab  = useDashboardStore(state => state.activeTab);
+  const setActiveTab = useDashboardStore(state => state.setActiveTab);
 
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
   const user            = useAuthStore(state => state.user);
@@ -74,6 +75,7 @@ function App() {
               lastPacketTime={device.lastPacketTime}
               alarmCount={criticalAlarmCount}
               onMenuClick={() => setSidebarOpen(true)}
+              onNotificationClick={() => setActiveTab('Alarms')}
             />
             <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
               {renderContent()}
