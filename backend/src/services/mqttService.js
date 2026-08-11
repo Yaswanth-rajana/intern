@@ -344,12 +344,19 @@ export const initMqttService = () => {
       }
 
       // 4. Compare Topic ID === Payload ID (Directive 5)
-      if (topicDeviceId !== payloadDeviceId) {
+      // Normalize comparison to allow matching if one has the prefix (e.g., "0001" and "IAQ-0001")
+      const normTopicId = topicDeviceId.startsWith('IAQ-') ? topicDeviceId : `IAQ-${topicDeviceId}`;
+      const normPayloadId = payloadDeviceId.startsWith('IAQ-') ? payloadDeviceId : `IAQ-${payloadDeviceId}`;
+
+      if (topicDeviceId !== payloadDeviceId && normTopicId !== normPayloadId) {
         console.warn(`[MQTT Security Alert] Topic deviceId "${topicDeviceId}" !== Payload deviceId "${payloadDeviceId}". Mismatch rejected.`);
         return;
       }
 
-      const deviceId = topicDeviceId;
+      // Use the canonical device ID with the correct prefix (preferring the one starting with 'IAQ-' or 'DEMO-')
+      const deviceId = payloadDeviceId.startsWith('IAQ-') || payloadDeviceId.startsWith('DEMO-') 
+        ? payloadDeviceId 
+        : normPayloadId;
 
       // 5. Look up Device in MongoDB/cache (Directive 5)
       let device = devices.get(deviceId);
