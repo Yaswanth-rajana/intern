@@ -20,6 +20,14 @@ export function GaugeCard({ title, value, unit, maxValue = 100, isLoading = fals
     "#ef4444", // critical
   ];
 
+  const formattedValue = typeof value === 'number' 
+    ? (value % 1 !== 0 ? parseFloat(value.toFixed(1)) : value) 
+    : 0;
+
+  const displayValue = typeof value === 'number' 
+    ? (value % 1 !== 0 ? value.toFixed(1) : value.toString()) 
+    : '0';
+
   return (
     <div className={cn("bg-white rounded-[16px] shadow-soft px-[24px] pb-[24px] pt-[32px] flex flex-col items-center min-h-[190px] min-w-0 transition-all duration-150 hover:shadow-lg justify-between", className)}>
       <h3 className="font-semibold text-[14px] text-neutral-600 mb-6 w-full text-center tracking-wide break-words">{title}</h3>
@@ -27,7 +35,7 @@ export function GaugeCard({ title, value, unit, maxValue = 100, isLoading = fals
         {/* Increased height to prevent clipping the bottom of the value text */}
         <div style={{ width: "100%", height: "115px", maxWidth: "160px" }} className="flex justify-center -mt-2">
           <ReactSpeedometer
-            value={value}
+            value={formattedValue}
             minValue={0}
             maxValue={maxValue}
             segments={4}
@@ -39,7 +47,7 @@ export function GaugeCard({ title, value, unit, maxValue = 100, isLoading = fals
             textColor="#52525b"
             fluidWidth={true}
             valueFormat={"d"}
-            currentValueText={`${value} ${unit}`}
+            currentValueText={`${displayValue} ${unit}`}
             valueTextFontSize="22px"
             labelFontSize="9px"
             paddingHorizontal={0}
