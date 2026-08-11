@@ -25,8 +25,6 @@ const tenantSchema = new mongoose.Schema(
   }
 );
 
-tenantSchema.index({ slug: 1 });
-
 const Tenant = mongoose.model('Tenant', tenantSchema);
 
 export default Tenant;

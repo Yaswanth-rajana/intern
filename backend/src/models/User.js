@@ -29,7 +29,6 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-userSchema.index({ username: 1 });
 userSchema.index({ tenantId: 1 });
 
 const User = mongoose.model('User', userSchema);
