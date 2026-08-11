@@ -42,25 +42,25 @@ export function MetricCard({ icon: Icon, title, value, unit, statusObj, sparklin
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       className={cn(
-        "bg-white rounded-[20px] shadow-[0_2px_12px_rgba(0,0,0,0.04)] p-[24px] pb-[20px] flex flex-col justify-between h-[170px] overflow-hidden cursor-pointer",
+        "bg-white rounded-[20px] shadow-[0_2px_12px_rgba(0,0,0,0.04)] p-[16px] pb-[16px] flex flex-col justify-between h-[170px] overflow-hidden cursor-pointer",
         "transition-all duration-150 hover:-translate-y-[2px] hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] border border-neutral-100/50", 
         isToggledOff && "opacity-45 border-dashed border-neutral-300 hover:translate-y-0 hover:shadow-[0_2px_12px_rgba(0,0,0,0.04)]",
         className
       )}
     >
-      <div className="flex items-center gap-6 w-full">
+      <div className="flex items-center gap-[10px] w-full">
         <div 
           className={cn(
-            "w-[72px] h-[72px] flex items-center justify-center shrink-0 text-white",
+            "w-[50px] h-[50px] flex items-center justify-center shrink-0 text-white",
             typeof Icon === 'string' ? "" : "rounded-full shadow-sm",
             isToggledOff && "grayscale opacity-50"
           )}
           style={typeof Icon === 'string' ? { backgroundColor: 'transparent' } : { backgroundColor: activeColor }}
         >
           {typeof Icon === 'string' ? (
-            <img src={Icon} alt={title} className="w-[72px] h-[72px] object-contain" />
+            <img src={Icon} alt={title} className="w-full h-full object-contain" />
           ) : (
-            <Icon className="w-8 h-8" strokeWidth={2.5} />
+            <Icon className="w-6 h-6" strokeWidth={2.5} />
           )}
         </div>
         
