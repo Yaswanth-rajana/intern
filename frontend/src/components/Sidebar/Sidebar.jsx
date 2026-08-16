@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Server, Settings, Wind, LogOut, BellRing, X, Users, Building2 } from 'lucide-react';
+import { LayoutDashboard, Server, Settings, Wind, LogOut, BellRing, X, Users, Building2, History } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useDashboardStore } from '../../store/dashboardStore';
 import { useAuthStore } from '../../store/authStore';
@@ -18,6 +18,7 @@ export function Sidebar({ className, isOpen, onClose }) {
     { label: 'Dashboard', icon: LayoutDashboard, value: 'Dashboard' },
     ...(isSuperAdmin ? [{ label: 'Clients', icon: Building2, value: 'Clients' }] : []),
     { label: 'Devices', icon: Server, value: 'Devices' },
+    { label: 'Historical Records', icon: History, value: 'History' },
     { label: 'Alerts Log', icon: BellRing, value: 'Alarms' },
     ...((isSuperAdmin || isClientAdmin) ? [{ label: 'Users', icon: Users, value: 'Users' }] : []),
     { label: 'Settings', icon: Settings, value: 'Settings' },

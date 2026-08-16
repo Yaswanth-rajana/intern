@@ -36,8 +36,16 @@ const startServer = async () => {
 startServer();
 
 // Graceful shutdown
-const shutdown = () => {
+const shutdown = async () => {
   console.log('\nShutting down gracefully...');
+  
+  // Flush telemetry data to database before exiting
+  try {
+    const { flushPendingTelemetry } = await import('./services/mqttService.js');
+    await flushPendingTelemetry();
+  } catch (err) {
+    console.error('Failed to flush pending telemetry:', err.message);
+  }
   
   disconnectMqtt();
   closeSocket();

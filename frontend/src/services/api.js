@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { useAuthStore } from '../store/authStore';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -17,6 +18,22 @@ apiClient.interceptors.request.use(
     return config;
   },
   (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Automatically logout on 401 Unauthorized responses to evict expired tokens
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      // Loop avoidance: do not trigger redundant logouts if the failing request is /auth/me itself
+      const requestUrl = error.config?.url || '';
+      if (!requestUrl.includes('/auth/me')) {
+        const { logout } = useAuthStore.getState();
+        logout();
+      }
+    }
     return Promise.reject(error);
   }
 );
@@ -119,5 +136,24 @@ export const unassignDevice = async (tenantId, deviceId) => {
 
 export const fetchAuditLogs = async (params = {}) => {
   const response = await apiClient.get('/audit-logs', { params });
+  return response.data;
+};
+
+// Historical Readings API
+export const fetchHistoricalReadings = async (params = {}) => {
+  const response = await apiClient.get('/api/readings', { params });
+  return response.data;
+};
+
+export const fetchLatestReading = async (deviceId) => {
+  const response = await apiClient.get('/api/readings/latest', { params: { deviceId } });
+  return response.data;
+};
+
+export const exportReadingsCSV = async (params = {}) => {
+  const response = await apiClient.get('/api/readings/export/csv', {
+    params,
+    responseType: 'blob'
+  });
   return response.data;
 };

@@ -198,6 +198,8 @@ export const useDashboardStore = create((set, get) => ({
   historyError: null,
   isHistoryMocked: false,
   _currentFetchToken: null,
+  _initializing: false,
+  isInitialized: false,
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 
@@ -293,6 +295,11 @@ export const useDashboardStore = create((set, get) => ({
 
 
   initialize: async () => {
+    if (get()._initializing || get().isInitialized) {
+      return;
+    }
+    set({ _initializing: true });
+
     try {
       set((state) => ({ ui: { ...state.ui, state: 'initialLoading' } }));
       
@@ -447,8 +454,11 @@ export const useDashboardStore = create((set, get) => ({
         }, 10000);
       }
 
+      set({ isInitialized: true, _initializing: false });
+
     } catch (error) {
       console.error('Initialization failed', error);
+      set({ _initializing: false });
       set((state) => ({ ui: { ...state.ui, state: 'live' } }));
     }
   },

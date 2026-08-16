@@ -9,6 +9,7 @@ import { ClientsManager } from './pages/Clients/ClientsManager';
 import { ThresholdsManager } from './pages/Settings/ThresholdsManager';
 import { AlarmsLog } from './pages/Alarms/AlarmsLog';
 import { UsersManager } from './pages/Users/UsersManager';
+import { HistoricalRecords } from './pages/HistoricalRecords/HistoricalRecords';
 import { Login } from './pages/Login/Login';
 import { ConnectionStatus } from './components/ConnectionStatus/ConnectionStatus';
 import { useDashboardStore } from './store/dashboardStore';
@@ -27,6 +28,8 @@ function App() {
   const setActiveTab = useDashboardStore(state => state.setActiveTab);
 
   const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+  const isCheckingAuth  = useAuthStore(state => state.isCheckingAuth);
+  const checkAuth       = useAuthStore(state => state.checkAuth);
   const user            = useAuthStore(state => state.user);
   const isSuperAdmin    = user?.role === 'SUPER_ADMIN';
 
@@ -36,9 +39,27 @@ function App() {
   usePageVisibility();
   const { showShortcuts, setShowShortcuts } = useKeyboardShortcuts();
 
+  // 1. Verify stored session exactly once on initial application mount
   useEffect(() => {
-    if (isAuthenticated) initialize();
-  }, [initialize, isAuthenticated]);
+    checkAuth();
+  }, [checkAuth]);
+
+  // 2. Initialize dashboard resources only after authentication is confirmed
+  useEffect(() => {
+    if (isAuthenticated && !isCheckingAuth) {
+      initialize();
+    }
+  }, [initialize, isAuthenticated, isCheckingAuth]);
+
+  // 3. Show checking screen while checking stored token validity with backend
+  if (isCheckingAuth) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-neutral-50 dark:bg-neutral-900 gap-4">
+        <div className="animate-spin rounded-full h-9 w-9 border-[3px] border-primary border-t-transparent shadow-sm"></div>
+        <span className="text-[10px] font-extrabold text-neutral-400 uppercase tracking-widest animate-pulse">Restoring Session...</span>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) return <Login />;
 
@@ -52,6 +73,7 @@ function App() {
       case 'Devices':   return isSuperAdmin ? <SuperAdminDevicesManager /> : <DevicesManager />;
       case 'Settings':  return <ThresholdsManager />;
       case 'Alarms':    return <AlarmsLog />;
+      case 'History':   return <HistoricalRecords />;
       case 'Dashboard':
       default:          return isSuperAdmin ? <SuperAdminDashboard /> : <Dashboard />;
     }

@@ -5,6 +5,7 @@ import User from '../models/User.js';
 import Tenant from '../models/Tenant.js';
 import Device from '../models/Device.js';
 import SensorHistory from '../models/SensorHistory.js';
+import SensorReading from '../models/SensorReading.js';
 import Threshold from '../models/Threshold.js';
 
 dotenv.config();

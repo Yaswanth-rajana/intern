@@ -4,6 +4,7 @@ import { getIO } from '../socket/socket.js';
 import Device from '../models/Device.js';
 import Tenant from '../models/Tenant.js';
 import SensorHistory from '../models/SensorHistory.js';
+import SensorReading from '../models/SensorReading.js';
 import SystemStats from '../models/SystemStats.js';
 import Alarm from '../models/Alarm.js';
 import Threshold from '../models/Threshold.js';
@@ -11,6 +12,28 @@ import Threshold from '../models/Threshold.js';
 const devices = new Map();
 const MAX_HISTORY = 100;
 let mqttClient = null;
+
+// Sliding window packet de-duplication cache to prevent duplicate ingestion from QoS retries/delays
+const recentPackets = new Set();
+const MAX_RECENT_PACKETS = 1000;
+
+function isDuplicatePacket(deviceId, timestamp, sensors) {
+  if (!sensors) return false;
+  // Construct a fingerprint of the telemetry message
+  const fingerprint = `${deviceId}_${timestamp}_${sensors.AQI}_${sensors.CO2}_${sensors.Temperature}_${sensors.Humidity}_${sensors.VOC}_${sensors.NOX}`;
+  if (recentPackets.has(fingerprint)) {
+    return true;
+  }
+  recentPackets.add(fingerprint);
+  
+  // Bound the size to prevent memory leaks
+  if (recentPackets.size > MAX_RECENT_PACKETS) {
+    const iterator = recentPackets.values();
+    recentPackets.delete(iterator.next().value);
+  }
+  return false;
+}
+
 
 // Configurable device offline timeout (in seconds)
 const getOfflineTimeoutMs = () => {
@@ -86,9 +109,41 @@ setInterval(async () => {
     const batch = [...insertQueue];
     insertQueue = [];
     try {
-      console.log('\n[Database] Saving Sensor History...');
-      await SensorHistory.insertMany(batch);
-      console.log('[Database] History Saved');
+      console.log('\n[Database] Saving Sensor History & Readings...');
+      
+      const readingsBatch = batch.map(item => {
+        const payload = item.rawPayload;
+        const devCache = devices.get(item.deviceId);
+        const firmwareVersion = payload?.firmwareVersion || devCache?.firmwareVersion || 'Unknown';
+        const hardwareVersion = payload?.hardwareVersion || devCache?.hardwareVersion || 'Unknown';
+        
+        return {
+          deviceId: item.deviceId,
+          tenantId: item.tenantId,
+          timestamp: item.timestamp,
+          receivedAt: item.receivedAt || new Date(),
+          AQI: item.AQI,
+          CO2: item.CO2,
+          Temperature: item.Temperature,
+          Humidity: item.Humidity,
+          VOC: item.VOC,
+          NOX: item.NOX,
+          PM1_0: item.PM1_0,
+          PM2_5: item.PM2_5,
+          PM4_0: item.PM4_0,
+          PM10: item.PM10,
+          firmwareVersion,
+          hardwareVersion
+        };
+      });
+
+      // Write to both collections
+      await Promise.all([
+        SensorHistory.insertMany(batch),
+        SensorReading.insertMany(readingsBatch)
+      ]);
+
+      console.log('[Database] History & Readings Saved Successfully');
       await SystemStats.updateOne(
         {},
         {
@@ -98,7 +153,8 @@ setInterval(async () => {
         { upsert: true }
       );
     } catch (error) {
-      console.error('[Database] Failed to batch insert sensor history:\n', error.stack || error);
+      console.error('[Database] Failed to batch insert sensor data, retrying in next interval:\n', error.stack || error);
+      // Put records back in queue to retry
       insertQueue = [...batch, ...insertQueue];
     }
   }
@@ -426,30 +482,42 @@ export const initMqttService = () => {
       const pm2_5 = payload.sensors.PM2_5 !== undefined ? payload.sensors.PM2_5 : payload.sensors['PM2.5'];
       const pm4_0 = payload.sensors.PM4_0 !== undefined ? payload.sensors.PM4_0 : payload.sensors['PM4.0'];
 
-      insertQueue.push({
-        deviceId,
-        tenantId: trustedTenantId,
-        timestamp: payload.timestamp ? new Date(payload.timestamp) : now,
-        AQI: payload.sensors.AQI,
-        CO2: payload.sensors.CO2,
-        Temperature: payload.sensors.Temperature,
-        Humidity: payload.sensors.Humidity,
-        VOC: payload.sensors.VOC,
-        NOX: payload.sensors.NOX,
-        PM1_0: pm1_0,
-        PM2_5: pm2_5,
-        PM4_0: pm4_0,
-        PM10: payload.sensors.PM10,
-        rawPayload: payload,
-        topic: topic,
-        qos: packet.qos,
-        retain: packet.retain,
-        receivedAt: now
-      });
+      const isDup = isDuplicatePacket(deviceId, payload.timestamp, payload.sensors);
+      if (isDup) {
+        console.log(`[MQTT] Duplicate telemetry payload received for device ${deviceId} at ${payload.timestamp || 'now'}. Discarding duplicate db ingestion.`);
+      } else {
+        // Enforce bounded queue size to prevent OOM
+        const MAX_QUEUE_SIZE = 5000;
+        if (insertQueue.length >= MAX_QUEUE_SIZE) {
+          console.warn(`[Database Warning] Sync queue full (${insertQueue.length} records). Dropping oldest packet.`);
+          insertQueue.shift(); // drop oldest to maintain bounds
+        }
 
-      // Check tenant-specific threshold alarms
-      if (trustedTenantId && payload.sensors) {
-        await checkThresholdAlarms(deviceId, trustedTenantId, payload.sensors);
+        insertQueue.push({
+          deviceId,
+          tenantId: trustedTenantId,
+          timestamp: payload.timestamp ? new Date(payload.timestamp) : now,
+          AQI: payload.sensors.AQI,
+          CO2: payload.sensors.CO2,
+          Temperature: payload.sensors.Temperature,
+          Humidity: payload.sensors.Humidity,
+          VOC: payload.sensors.VOC,
+          NOX: payload.sensors.NOX,
+          PM1_0: pm1_0,
+          PM2_5: pm2_5,
+          PM4_0: pm4_0,
+          PM10: payload.sensors.PM10,
+          rawPayload: payload,
+          topic: topic,
+          qos: packet.qos,
+          retain: packet.retain,
+          receivedAt: now
+        });
+
+        // Check tenant-specific threshold alarms
+        if (trustedTenantId && payload.sensors) {
+          await checkThresholdAlarms(deviceId, trustedTenantId, payload.sensors);
+        }
       }
 
       // Room-isolated socket broadcasts
@@ -793,4 +861,66 @@ export const unassignDeviceTenant = async (deviceId) => {
   }
 
   await broadcastDeviceListUpdated();
+};
+
+export const flushPendingTelemetry = async () => {
+  if (insertQueue.length > 0) {
+    const batch = [...insertQueue];
+    insertQueue = [];
+    try {
+      console.log('\n[Shutdown] Flushing Sensor History & Readings...');
+      const readingsBatch = batch.map(item => {
+        const payload = item.rawPayload;
+        const devCache = devices.get(item.deviceId);
+        const firmwareVersion = payload?.firmwareVersion || devCache?.firmwareVersion || 'Unknown';
+        const hardwareVersion = payload?.hardwareVersion || devCache?.hardwareVersion || 'Unknown';
+        
+        return {
+          deviceId: item.deviceId,
+          tenantId: item.tenantId,
+          timestamp: item.timestamp,
+          receivedAt: item.receivedAt || new Date(),
+          AQI: item.AQI,
+          CO2: item.CO2,
+          Temperature: item.Temperature,
+          Humidity: item.Humidity,
+          VOC: item.VOC,
+          NOX: item.NOX,
+          PM1_0: item.PM1_0,
+          PM2_5: item.PM2_5,
+          PM4_0: item.PM4_0,
+          PM10: item.PM10,
+          firmwareVersion,
+          hardwareVersion
+        };
+      });
+
+      await Promise.all([
+        SensorHistory.insertMany(batch),
+        SensorReading.insertMany(readingsBatch)
+      ]);
+      console.log('[Shutdown] Telemetry flushed successfully.');
+    } catch (error) {
+      console.error('[Shutdown] Failed to flush telemetry batch:', error.message);
+    }
+  }
+
+  if (pendingDeviceUpdates.size > 0) {
+    const devicesToUpdate = Array.from(pendingDeviceUpdates.values());
+    pendingDeviceUpdates.clear();
+    try {
+      console.log('[Shutdown] Flushing Device Updates...');
+      const bulkOps = devicesToUpdate.map(d => ({
+        updateOne: {
+          filter: { deviceId: d.deviceId },
+          update: { $set: d },
+          upsert: true
+        }
+      }));
+      await Device.bulkWrite(bulkOps);
+      console.log('[Shutdown] Devices flushed successfully.');
+    } catch (error) {
+      console.error('[Shutdown] Failed to flush device updates:', error.message);
+    }
+  }
 };
