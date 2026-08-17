@@ -4,8 +4,12 @@ import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Tenant from '../models/Tenant.js';
+import Device from '../models/Device.js';
+import ViewerDeviceAccess from '../models/ViewerDeviceAccess.js';
 import { authenticateJWT, requireRole, applyTenantFilter } from '../middleware/auth.js';
 import { logAudit } from '../models/AuditLog.js';
+import { syncViewerSocketRooms } from '../socket/socket.js';
+import { broadcastDeviceListUpdated } from '../services/mqttService.js';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_123';
@@ -180,12 +184,171 @@ router.get('/me', authenticateJWT, async (req, res) => {
 router.get('/users', authenticateJWT, requireRole('SUPER_ADMIN', 'CLIENT_ADMIN'), async (req, res) => {
   try {
     const filter = applyTenantFilter(req);
-    const users = await User.find(filter).select('-password').sort({ createdAt: -1 });
-    res.json({ users });
+    const users = await User.find(filter).select('-password').sort({ createdAt: -1 }).lean();
+
+    // Fetch device assignments for all returned viewers in batch
+    const viewerIds = users.filter(u => u.role === 'VIEWER').map(u => u._id);
+    const assignments = await ViewerDeviceAccess.find({ viewerId: { $in: viewerIds } }).lean();
+    
+    // Group assignments by viewerId
+    const assignmentsMap = {};
+    assignments.forEach(a => {
+      const vid = a.viewerId.toString();
+      if (!assignmentsMap[vid]) assignmentsMap[vid] = [];
+      assignmentsMap[vid].push(a.deviceId);
+    });
+
+    // Get total device count per tenant
+    const tenantIds = [...new Set(users.map(u => u.tenantId?.toString()).filter(Boolean))];
+    const tenantDevices = await Device.find({ tenantId: { $in: tenantIds } }).select('deviceId tenantId').lean();
+    const tenantDeviceCountMap = {};
+    tenantDevices.forEach(d => {
+      const tid = d.tenantId.toString();
+      tenantDeviceCountMap[tid] = (tenantDeviceCountMap[tid] || 0) + 1;
+    });
+
+    const enrichedUsers = users.map(u => {
+      const vid = u._id.toString();
+      const tid = u.tenantId?.toString();
+      const assignedDeviceIds = assignmentsMap[vid] || [];
+      const totalTenantDevices = tid ? (tenantDeviceCountMap[tid] || 0) : 0;
+      return {
+        ...u,
+        assignedDeviceIds,
+        deviceCount: assignedDeviceIds.length,
+        totalTenantDevices,
+      };
+    });
+
+    res.json({ users: enrichedUsers });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch users: ' + error.message });
   }
 });
+
+// GET /auth/users/:id/devices - Get assigned devices for a specific viewer
+router.get('/users/:id/devices', authenticateJWT, requireRole('SUPER_ADMIN', 'CLIENT_ADMIN'), async (req, res) => {
+  try {
+    const targetUserId = req.params.id;
+    const targetUser = await User.findById(targetUserId);
+
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (targetUser.role !== 'VIEWER') {
+      return res.status(400).json({ error: 'Device-level access control is only applicable to VIEWER accounts' });
+    }
+
+    if (req.user.role === 'CLIENT_ADMIN') {
+      if (String(targetUser.tenantId) !== String(req.user.tenantId)) {
+        return res.status(403).json({ error: 'Forbidden: Cannot view users outside your tenant' });
+      }
+    }
+
+    const assignments = await ViewerDeviceAccess.find({ viewerId: targetUserId }).lean();
+    const deviceIds = assignments.map(a => a.deviceId);
+
+    res.json({
+      userId: targetUserId,
+      username: targetUser.username,
+      deviceIds,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch viewer devices: ' + error.message });
+  }
+});
+
+// PUT /auth/users/:id/devices - Replace assigned devices for a specific viewer
+const updateViewerDevicesHandler = async (req, res) => {
+  try {
+    const targetUserId = req.params.id;
+    const { deviceIds } = req.body;
+
+    if (!Array.isArray(deviceIds)) {
+      return res.status(400).json({ error: 'deviceIds must be an array of strings' });
+    }
+
+    const targetUser = await User.findById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Target user not found' });
+    }
+
+    if (targetUser.role !== 'VIEWER') {
+      return res.status(400).json({ error: 'Device assignments can only be configured for VIEWER accounts' });
+    }
+
+    let tenantIdToVerify = targetUser.tenantId;
+
+    if (req.user.role === 'CLIENT_ADMIN') {
+      if (String(targetUser.tenantId) !== String(req.user.tenantId)) {
+        return res.status(403).json({ error: 'Forbidden: Target viewer belongs to a different tenant' });
+      }
+      tenantIdToVerify = req.user.tenantId;
+    }
+
+    if (!tenantIdToVerify) {
+      return res.status(400).json({ error: 'Target viewer has no assigned tenant' });
+    }
+
+    // Clean & de-duplicate device IDs
+    const cleanDeviceIds = [...new Set(deviceIds.map(d => String(d).trim()).filter(Boolean))];
+
+    // Verify EVERY supplied device belongs to the exact same tenant
+    if (cleanDeviceIds.length > 0) {
+      const matchingDevices = await Device.find({
+        deviceId: { $in: cleanDeviceIds },
+        tenantId: tenantIdToVerify,
+      }).lean();
+
+      if (matchingDevices.length !== cleanDeviceIds.length) {
+        return res.status(403).json({ 
+          error: 'Security Error: One or more selected devices do not belong to this tenant' 
+        });
+      }
+    }
+
+    // Replace assignments atomically
+    await ViewerDeviceAccess.deleteMany({ viewerId: targetUserId });
+
+    if (cleanDeviceIds.length > 0) {
+      const docsToInsert = cleanDeviceIds.map(deviceId => ({
+        viewerId: targetUserId,
+        deviceId,
+        tenantId: tenantIdToVerify,
+      }));
+      await ViewerDeviceAccess.insertMany(docsToInsert);
+    }
+
+    await logAudit({
+      req,
+      action: 'ASSIGN_VIEWER_DEVICES',
+      resource: 'User',
+      resourceId: targetUserId,
+      metadata: { 
+        username: targetUser.username, 
+        deviceIds: cleanDeviceIds, 
+        deviceCount: cleanDeviceIds.length 
+      }
+    });
+
+    // Real-time synchronization: Update active socket rooms for this viewer and push deviceList update
+    await syncViewerSocketRooms(targetUserId, cleanDeviceIds);
+    await broadcastDeviceListUpdated();
+
+    res.json({
+      message: `Successfully assigned ${cleanDeviceIds.length} device(s) to ${targetUser.username}`,
+      userId: targetUserId,
+      deviceIds: cleanDeviceIds,
+      deviceCount: cleanDeviceIds.length,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update viewer devices: ' + error.message });
+  }
+};
+
+router.put('/users/:id/devices', authenticateJWT, requireRole('SUPER_ADMIN', 'CLIENT_ADMIN'), updateViewerDevicesHandler);
+router.patch('/users/:id/devices', authenticateJWT, requireRole('SUPER_ADMIN', 'CLIENT_ADMIN'), updateViewerDevicesHandler);
 
 // POST /auth/users - Create user (SUPER_ADMIN or CLIENT_ADMIN)
 router.post('/users', authenticateJWT, requireRole('SUPER_ADMIN', 'CLIENT_ADMIN'), async (req, res) => {
@@ -264,6 +427,8 @@ router.post('/users', authenticateJWT, requireRole('SUPER_ADMIN', 'CLIENT_ADMIN'
         role: newUser.role,
         tenantId: newUser.tenantId,
         createdAt: newUser.createdAt,
+        deviceCount: 0,
+        assignedDeviceIds: [],
       },
     });
   } catch (error) {
@@ -271,7 +436,7 @@ router.post('/users', authenticateJWT, requireRole('SUPER_ADMIN', 'CLIENT_ADMIN'
   }
 });
 
-// DELETE /auth/users/:id - Delete user account
+// DELETE /auth/users/:id - Delete user account and clean up device assignments
 router.delete('/users/:id', authenticateJWT, requireRole('SUPER_ADMIN', 'CLIENT_ADMIN'), async (req, res) => {
   try {
     const targetUserId = req.params.id;
@@ -298,7 +463,11 @@ router.delete('/users/:id', authenticateJWT, requireRole('SUPER_ADMIN', 'CLIENT_
       }
     }
 
-    await User.findByIdAndDelete(targetUserId);
+    // Delete user and cascade delete any device assignments
+    await Promise.all([
+      User.findByIdAndDelete(targetUserId),
+      ViewerDeviceAccess.deleteMany({ viewerId: targetUserId })
+    ]);
 
     await logAudit({
       req,

@@ -1,23 +1,18 @@
 import React from 'react';
-import { Gauge, Wind, Thermometer, Droplets, Cloud, Atom, Box, Boxes, Layers, Hexagon } from 'lucide-react';
+import { Thermometer, Droplets, Box, Boxes, Layers, Hexagon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { DeviceInfo } from '../../components/DeviceInfo/DeviceInfo';
 import { MetricCard } from '../../components/MetricCard/MetricCard';
-import { GaugeCard } from '../../components/GaugeCard/GaugeCard';
 import { ChartsSection } from '../../components/Charts/ChartsSection';
 import { AlarmPanel } from '../../components/AlarmPanel/AlarmPanel';
-import { SystemStatus } from '../../components/DeviceOperations/SystemStatus';
-import { DiagnosticsPanel } from '../../components/DiagnosticsPanel/DiagnosticsPanel';
+import { SensorHealth } from '../../components/SensorHealth/SensorHealth';
 import { MetricCardSkeleton } from '../../components/LoadingSkeleton/LoadingSkeleton';
-import { getSensorStatus, SENSOR_CONFIG } from '../../utils/sensorStatusConfig';
+import { getSensorStatus } from '../../utils/sensorStatusConfig';
 import { useDashboardStore } from '../../store/dashboardStore';
 
 export function Dashboard() {
   const uiState = useDashboardStore(state => state.ui.state);
   const sensors = useDashboardStore(state => state.sensors.latest);
-  const visibleMetrics = useDashboardStore(state => state.visibleMetrics);
-  const toggleMetric = useDashboardStore(state => state.toggleMetric);
-  const setHoveredMetric = useDashboardStore(state => state.setHoveredMetric);
   const isLoading = uiState === 'initialLoading';
 
   const metricsConfig = [
@@ -31,18 +26,6 @@ export function Dashboard() {
     { key: 'NOX', title: 'NOx', icon: 'https://image.shutterstock.com/image-vector/nox-road-sign-on-white-260nw-1545439145.jpg', value: sensors.NOX, unit: 'ppb' },
     { key: 'Temperature', title: 'Temperature', icon: Thermometer, value: sensors.Temperature, unit: '°C' },
     { key: 'Humidity', title: 'Humidity', icon: Droplets, value: sensors.Humidity, unit: '%' },
-  ];
-
-  const gaugesConfig = [
-    // Row 1
-    { title: 'AQI', value: sensors.AQI, unit: SENSOR_CONFIG.AQI.unit, max: SENSOR_CONFIG.AQI.max },
-    { title: 'CO2', value: sensors.CO2, unit: SENSOR_CONFIG.CO2.unit, max: SENSOR_CONFIG.CO2.max },
-    { title: 'VOC', value: sensors.VOC, unit: SENSOR_CONFIG.VOC.unit, max: SENSOR_CONFIG.VOC.max },
-    { title: 'PM 2.5', value: sensors.PM2_5, unit: SENSOR_CONFIG.PM2_5.unit, max: SENSOR_CONFIG.PM2_5.max },
-    // Row 2
-    { title: 'Temperature', value: sensors.Temperature, unit: SENSOR_CONFIG.Temperature.unit, max: SENSOR_CONFIG.Temperature.max },
-    { title: 'Humidity', value: sensors.Humidity, unit: SENSOR_CONFIG.Humidity.unit, max: SENSOR_CONFIG.Humidity.max },
-    { title: 'NOX', value: sensors.NOX || 20, unit: SENSOR_CONFIG.NOX.unit, max: SENSOR_CONFIG.NOX.max },
   ];
 
   return (
@@ -70,40 +53,20 @@ export function Dashboard() {
                   value={metric.value}
                   unit={metric.unit}
                   statusObj={getSensorStatus(metric.key, metric.value)}
-                  isToggledOff={false}
-                  onClick={() => toggleMetric(metric.key)}
-                  onMouseEnter={() => setHoveredMetric(metric.key)}
-                  onMouseLeave={() => setHoveredMetric(null)}
                 />
               </motion.div>
             ))
         }
       </div>
 
-      {/* Gauge Cards - full width */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-[20px] mt-6">
-        {gaugesConfig.map((gauge) => (
-          <GaugeCard
-            key={gauge.title}
-            title={gauge.title}
-            value={gauge.value}
-            unit={gauge.unit}
-            maxValue={gauge.max}
-            isLoading={isLoading}
-          />
-        ))}
-      </div>
-
       {/* Chart - full width */}
       <ChartsSection />
 
-      {/* Status + Alarms - below chart */}
+      {/* Sensor Health + Active Alarms - side-by-side on desktop */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-[20px]">
-        <SystemStatus />
+        <SensorHealth />
         <AlarmPanel />
       </div>
-
-      <DiagnosticsPanel className="mt-6" />
       
     </motion.div>
   );

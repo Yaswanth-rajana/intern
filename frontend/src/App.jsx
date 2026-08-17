@@ -6,7 +6,7 @@ import { SuperAdminDashboard } from './pages/Dashboard/SuperAdminDashboard';
 import { DevicesManager } from './pages/Devices/DevicesManager';
 import { SuperAdminDevicesManager } from './pages/Devices/SuperAdminDevicesManager';
 import { ClientsManager } from './pages/Clients/ClientsManager';
-import { ThresholdsManager } from './pages/Settings/ThresholdsManager';
+import { Settings } from './pages/Settings/Settings';
 import { AlarmsLog } from './pages/Alarms/AlarmsLog';
 import { UsersManager } from './pages/Users/UsersManager';
 import { HistoricalRecords } from './pages/HistoricalRecords/HistoricalRecords';
@@ -71,7 +71,7 @@ function App() {
       case 'Clients':   return isSuperAdmin ? <ClientsManager /> : <Dashboard />;
       case 'Users':     return <UsersManager />;
       case 'Devices':   return isSuperAdmin ? <SuperAdminDevicesManager /> : <DevicesManager />;
-      case 'Settings':  return <ThresholdsManager />;
+      case 'Settings':  return <Settings />;
       case 'Alarms':    return <AlarmsLog />;
       case 'History':   return <HistoricalRecords />;
       case 'Dashboard':

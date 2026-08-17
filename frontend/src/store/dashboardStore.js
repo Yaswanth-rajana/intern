@@ -11,7 +11,7 @@ import {
 import { connectSocket, socket } from '../services/socket';
 import { getSensorStatus, updateSensorLimits } from '../utils/sensorStatusConfig';
 
-const HISTORY_LIMIT = 50;
+const LIVE_RETENTION_MS = 60 * 60 * 1000; // 60 minutes safety retention window for live history
 
 // Human-readable display names for sensor keys
 const SENSOR_DISPLAY_NAMES = {
@@ -159,6 +159,39 @@ const getInitialTimeRange = () => {
   return 'live';
 };
 
+const normalizeRawHistory = (rawData, range) => {
+  if (!Array.isArray(rawData)) return [];
+  const sortedData = range === 'live' ? [...rawData].reverse() : rawData;
+  return sortedData
+    .map(p => {
+      const ts = typeof p._ts === 'number' && Number.isFinite(p._ts)
+        ? p._ts 
+        : (p.timestamp ? new Date(p.timestamp).getTime() : null);
+      if (!ts || !Number.isFinite(ts)) return null;
+
+      const formatVal = (v) => {
+        if (v === undefined || v === null || isNaN(v)) return null;
+        return typeof v === 'number' ? Number(v) : parseFloat(v) || null;
+      };
+
+      return {
+        timestamp: p.timestamp || new Date(ts).toISOString(),
+        _ts: ts,
+        AQI: formatVal(p.sensors?.AQI ?? p.AQI),
+        CO2: formatVal(p.sensors?.CO2 ?? p.CO2),
+        VOC: formatVal(p.sensors?.VOC ?? p.VOC),
+        Temperature: formatVal(p.sensors?.Temperature ?? p.Temperature),
+        Humidity: formatVal(p.sensors?.Humidity ?? p.Humidity),
+        PM1_0: formatVal(p.sensors?.PM1_0 ?? p.sensors?.['PM1.0'] ?? p.PM1_0),
+        PM2_5: formatVal(p.sensors?.PM2_5 ?? p.sensors?.['PM2.5'] ?? p.PM2_5),
+        PM4_0: formatVal(p.sensors?.PM4_0 ?? p.sensors?.['PM4.0'] ?? p.PM4_0),
+        PM10: formatVal(p.sensors?.PM10 ?? p.PM10),
+        NOX: formatVal(p.sensors?.NOX ?? p.NOX),
+      };
+    })
+    .filter(Boolean);
+};
+
 export const useDashboardStore = create((set, get) => ({
   deviceList: [],
   selectedDeviceId: null,
@@ -203,77 +236,76 @@ export const useDashboardStore = create((set, get) => ({
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 
+  // Unified shared history fetcher for initialize, setTimeRange, and selectDevice
+  loadChartData: async (deviceId, range) => {
+    console.log('[GRAPH-DEBUG] loadChartData called', { deviceId, range });
+    if (!deviceId) {
+      set({ history: [], isHistoryLoading: false, historyError: null });
+      return [];
+    }
+
+    const fetchToken = Math.random().toString(36).substring(7);
+    get()._currentFetchToken = fetchToken;
+    set({ isHistoryLoading: true, historyError: null });
+
+    try {
+      const res = await fetchDeviceHistory(deviceId, range);
+      if (get()._currentFetchToken !== fetchToken) return null;
+
+      const rawData = res?.data || [];
+      const normalized = normalizeRawHistory(rawData, range);
+
+      let finalHistory = normalized;
+      if (range === 'live') {
+        const combined = [...normalized, ...get().history];
+        const dedupMap = new Map();
+        combined.forEach(p => {
+          if (p && p._ts) dedupMap.set(p._ts, p);
+        });
+        const sorted = Array.from(dedupMap.values()).sort((a, b) => a._ts - b._ts);
+        const cutoff = Date.now() - LIVE_RETENTION_MS;
+        finalHistory = sorted.filter(p => p._ts >= cutoff);
+      }
+
+      console.log('[GRAPH-DEBUG] loadChartData received', {
+        deviceId,
+        range,
+        rawDataLength: rawData.length,
+        normalizedLength: normalized.length,
+        finalHistoryLength: finalHistory.length,
+        firstItem: finalHistory[0],
+        lastItem: finalHistory[finalHistory.length - 1]
+      });
+
+      set({ 
+        history: finalHistory, 
+        isHistoryLoading: false, 
+        isHistoryMocked: res?.isMocked || false,
+        historyError: null 
+      });
+      return finalHistory;
+    } catch (err) {
+      if (get()._currentFetchToken !== fetchToken) return null;
+      console.error('[GRAPH-DEBUG] Failed to load chart history:', err);
+      set({ 
+        historyError: range === 'live' ? 'Failed to load live history buffer' : 'Failed to load historical data', 
+        isHistoryLoading: false 
+      });
+      return [];
+    }
+  },
+
   setTimeRange: async (range) => {
     const { selectedDeviceId } = get();
-    if (!selectedDeviceId) return;
-
+    console.log('[GRAPH-DEBUG] setTimeRange called', { range, selectedDeviceId });
     try {
       localStorage.setItem('iaq_time_range', range);
     } catch (e) {}
 
-    set({ timeRange: range, historyError: null });
+    set({ timeRange: range });
 
-    const fetchToken = Math.random().toString(36).substring(7);
-    get()._currentFetchToken = fetchToken;
-
-    if (range === 'live') {
-      try {
-        set({ isHistoryLoading: true });
-        const res = await fetchDeviceHistory(selectedDeviceId, 'live');
-        if (get()._currentFetchToken !== fetchToken) return;
-
-        const historyData = res.data || [];
-        const newHistory = historyData.reverse().map(p => ({
-          timestamp: p.timestamp,
-          _ts: new Date(p.timestamp).getTime(),
-          AQI: p.sensors?.AQI,
-          CO2: p.sensors?.CO2,
-          VOC: p.sensors?.VOC,
-          Temperature: p.sensors?.Temperature,
-          Humidity: p.sensors?.Humidity,
-          PM1_0: p.sensors?.PM1_0 || p.sensors?.['PM1.0'],
-          PM2_5: p.sensors?.PM2_5 || p.sensors?.['PM2.5'],
-          PM4_0: p.sensors?.PM4_0 || p.sensors?.['PM4.0'],
-          PM10: p.sensors?.PM10,
-          NOX: p.sensors?.NOX,
-        }));
-        console.log(`[History Response] Range: live, Data Points: ${newHistory.length}, Is Mocked: false`);
-        set({ history: newHistory, isHistoryLoading: false, isHistoryMocked: false });
-      } catch (err) {
-        if (get()._currentFetchToken !== fetchToken) return;
-        set({ historyError: 'Failed to load live history buffer', isHistoryLoading: false });
-      }
-    } else {
-      try {
-        set({ isHistoryLoading: true });
-        const res = await fetchDeviceHistory(selectedDeviceId, range);
-        if (get()._currentFetchToken !== fetchToken) return;
-
-        const historyData = res.data || [];
-        const newHistory = historyData.map(p => ({
-          timestamp: p.timestamp,
-          _ts: new Date(p.timestamp).getTime(),
-          AQI: p.sensors?.AQI,
-          CO2: p.sensors?.CO2,
-          VOC: p.sensors?.VOC,
-          Temperature: p.sensors?.Temperature,
-          Humidity: p.sensors?.Humidity,
-          PM1_0: p.sensors?.PM1_0 || p.sensors?.['PM1.0'],
-          PM2_5: p.sensors?.PM2_5 || p.sensors?.['PM2.5'],
-          PM4_0: p.sensors?.PM4_0 || p.sensors?.['PM4.0'],
-          PM10: p.sensors?.PM10,
-          NOX: p.sensors?.NOX,
-        }));
-        console.log(`[History Response] Range: ${range}, Data Points: ${newHistory.length}, Is Mocked: ${res.isMocked}`);
-        set({ 
-          history: newHistory, 
-          isHistoryLoading: false, 
-          isHistoryMocked: res.isMocked || false 
-        });
-      } catch (err) {
-        if (get()._currentFetchToken !== fetchToken) return;
-        set({ historyError: 'Failed to load historical data', isHistoryLoading: false });
-      }
+    if (selectedDeviceId) {
+      await get().loadChartData(selectedDeviceId, range);
     }
   },
 
@@ -293,8 +325,14 @@ export const useDashboardStore = create((set, get) => ({
     };
   }),
 
-
   initialize: async () => {
+    console.log('[GRAPH-DEBUG] INITIALIZE called', {
+      isInitialized: get().isInitialized,
+      _initializing: get()._initializing,
+      currentTimeRange: get().timeRange,
+      currentSelectedDeviceId: get().selectedDeviceId
+    });
+
     if (get()._initializing || get().isInitialized) {
       return;
     }
@@ -303,128 +341,101 @@ export const useDashboardStore = create((set, get) => ({
     try {
       set((state) => ({ ui: { ...state.ui, state: 'initialLoading' } }));
       
-      // Load thresholds from DB
-      let dbThresholds = [];
-      try {
-        dbThresholds = await fetchThresholds();
-        dbThresholds.forEach(t => {
-          updateSensorLimits(t.sensorKey, t.warningLimit, t.criticalLimit);
-        });
-      } catch (err) {
-        console.error('Failed to fetch thresholds on init', err);
-      }
+      // 1. Concurrently fetch DB thresholds, device list, and system health
+      const [dbThresholds, devices, healthData] = await Promise.all([
+        fetchThresholds().catch(err => {
+          console.error('Failed to fetch thresholds on init', err);
+          return [];
+        }),
+        fetchDevices().catch(err => {
+          console.error('Failed to fetch devices', err);
+          return [];
+        }),
+        healthCheck().catch(() => ({}))
+      ]);
 
-      let devices = [];
-      try {
-        devices = await fetchDevices();
-      } catch (e) {
-        console.error('Failed to fetch devices', e);
-      }
-      
-      const defaultDevice = devices.length > 0 ? devices[0].deviceId : null;
-      
-      let historyData = [];
-      let latestData = null;
-      let healthData = {};
-      
-      try {
-        healthData = await healthCheck();
-      } catch (e) {}
-
-      if (defaultDevice) {
-        try {
-          const activeRange = get().timeRange;
-          if (activeRange !== 'live') {
-            set({ isHistoryLoading: true, historyError: null });
-          }
-          const [res, lat] = await Promise.all([
-            fetchDeviceHistory(defaultDevice, activeRange).catch((e) => {
-              set({ historyError: 'Failed to load data on initialization' });
-              return { data: [], isMocked: false };
-            }),
-            fetchDeviceLatest(defaultDevice).catch(() => null)
-          ]);
-          historyData = res?.data || [];
-          latestData = lat;
-          set({ isHistoryMocked: res?.isMocked || false, isHistoryLoading: false });
-        } catch (e) {
-          set({ isHistoryLoading: false });
-        }
-      }
-
-      set((state) => {
-        let newHistory = [];
-        if (Array.isArray(historyData)) {
-          const activeRange = get().timeRange;
-          const sortedData = activeRange === 'live' ? [...historyData].reverse() : historyData;
-          newHistory = sortedData
-            .slice(0, activeRange === 'live' ? HISTORY_LIMIT : sortedData.length)
-            .map(p => ({
-              timestamp: p.timestamp,
-              _ts: new Date(p.timestamp).getTime(),
-              AQI: p.sensors?.AQI,
-              CO2: p.sensors?.CO2,
-              VOC: p.sensors?.VOC,
-              Temperature: p.sensors?.Temperature,
-              Humidity: p.sensors?.Humidity,
-              PM1_0: p.sensors?.PM1_0 || p.sensors?.['PM1.0'],
-              PM2_5: p.sensors?.PM2_5 || p.sensors?.['PM2.5'],
-              PM4_0: p.sensors?.PM4_0 || p.sensors?.['PM4.0'],
-              PM10: p.sensors?.PM10,
-              NOX: p.sensors?.NOX,
-            }));
-        }
-
-        const latestSensors = latestData?.sensors ? {
-          AQI: latestData.sensors.AQI,
-          CO2: latestData.sensors.CO2,
-          VOC: latestData.sensors.VOC,
-          Temperature: latestData.sensors.Temperature,
-          Humidity: latestData.sensors.Humidity,
-          PM1_0: latestData.sensors.PM1_0 || latestData.sensors['PM1.0'],
-          PM2_5: latestData.sensors.PM2_5 || latestData.sensors['PM2.5'],
-          PM4_0: latestData.sensors.PM4_0 || latestData.sensors['PM4.0'],
-          PM10: latestData.sensors.PM10,
-          NOX: latestData.sensors.NOX,
-        } : {};
-
-        const updatedDevices = devices.map(d => {
-          if (d.deviceId === defaultDevice) {
-            return {
-              ...d,
-              latestSensors
-            };
-          }
-          return d;
-        });
-
-        return {
-          deviceList: updatedDevices,
-          selectedDeviceId: defaultDevice,
-          thresholds: dbThresholds,
-          history: newHistory,
-          sensors: { latest: latestSensors },
-          alarms: {
-            activeAlarms: generateAlarmsList(latestSensors, [], new Date().toLocaleTimeString(), defaultDevice, latestData?.name || defaultDevice),
-            alarmLog: generateAlarmsList(latestSensors, [], new Date().toLocaleTimeString(), defaultDevice, latestData?.name || defaultDevice),
-          },
-          device: {
-            ...state.device,
-            info: {
-              ...(devices.find(d => d.deviceId === defaultDevice) || {}),
-              ...latestData
-            },
-            lastPacketTime: latestData ? Date.now() : null,
-          },
-          system: {
-            ...state.system,
-            backend: { status: healthData?.status === 'ok' ? 'Running' : 'Offline' },
-            mqtt: { status: healthData?.mqtt === 'connected' ? 'Connected' : 'Disconnected' },
-            mqttStats: healthData?.mqttStats || {},
-          },
-          ui: { state: 'live' }
-        };
+      dbThresholds.forEach(t => {
+        updateSensorLimits(t.sensorKey, t.warningLimit, t.criticalLimit);
       });
+
+      const defaultDevice = devices.length > 0 ? devices[0].deviceId : null;
+      const activeRange = get().timeRange;
+
+      console.log('[GRAPH-DEBUG] INITIALIZE devices fetched', {
+        devicesCount: devices?.length,
+        defaultDevice,
+        activeRange
+      });
+
+      let latestData = null;
+
+      // 2. Fetch chart data through the EXACT SAME shared function and latest telemetry
+      if (defaultDevice) {
+        const [, lat] = await Promise.all([
+          get().loadChartData(defaultDevice, activeRange),
+          fetchDeviceLatest(defaultDevice).catch(() => null)
+        ]);
+        latestData = lat;
+      } else {
+        set({ history: [], isHistoryLoading: false });
+      }
+
+      const latestSensors = latestData?.sensors ? {
+        AQI: latestData.sensors.AQI,
+        CO2: latestData.sensors.CO2,
+        VOC: latestData.sensors.VOC,
+        Temperature: latestData.sensors.Temperature,
+        Humidity: latestData.sensors.Humidity,
+        PM1_0: latestData.sensors.PM1_0 || latestData.sensors['PM1.0'],
+        PM2_5: latestData.sensors.PM2_5 || latestData.sensors['PM2.5'],
+        PM4_0: latestData.sensors.PM4_0 || latestData.sensors['PM4.0'],
+        PM10: latestData.sensors.PM10,
+        NOX: latestData.sensors.NOX,
+      } : {};
+
+      const updatedDevices = (devices || []).map(d => {
+        if (d.deviceId === defaultDevice) {
+          return {
+            ...d,
+            latestSensors
+          };
+        }
+        return d;
+      });
+
+      console.log('[GRAPH-DEBUG] INITIALIZE setting final state', {
+        defaultDevice,
+        historyLength: get().history?.length,
+        timeRange: get().timeRange
+      });
+
+      set((state) => ({
+        deviceList: updatedDevices,
+        selectedDeviceId: defaultDevice,
+        thresholds: dbThresholds,
+        sensors: { latest: latestSensors },
+        alarms: {
+          activeAlarms: generateAlarmsList(latestSensors, [], new Date().toLocaleTimeString(), defaultDevice, latestData?.name || defaultDevice),
+          alarmLog: generateAlarmsList(latestSensors, [], new Date().toLocaleTimeString(), defaultDevice, latestData?.name || defaultDevice),
+        },
+        device: {
+          ...state.device,
+          info: {
+            ...(updatedDevices.find(d => d.deviceId === defaultDevice) || {}),
+            ...latestData
+          },
+          lastPacketTime: latestData ? Date.now() : null,
+        },
+        system: {
+          ...state.system,
+          backend: { status: healthData?.status === 'ok' ? 'Running' : 'Offline' },
+          mqtt: { status: healthData?.mqtt === 'connected' ? 'Connected' : 'Disconnected' },
+          mqttStats: healthData?.mqttStats || {},
+        },
+        ui: { state: 'live' },
+        isInitialized: true,
+        _initializing: false,
+      }));
 
       // Connect socket after initial load
       connectSocket();
@@ -454,56 +465,28 @@ export const useDashboardStore = create((set, get) => ({
         }, 10000);
       }
 
-      set({ isInitialized: true, _initializing: false });
-
     } catch (error) {
       console.error('Initialization failed', error);
-      set({ _initializing: false });
+      set({ _initializing: false, isHistoryLoading: false, isInitialized: true });
       set((state) => ({ ui: { ...state.ui, state: 'live' } }));
     }
   },
 
   selectDevice: async (deviceId) => {
     try {
-      set((state) => ({ ui: { ...state.ui, state: 'loadingDevice' }, selectedDeviceId: deviceId, historyError: null }));
+      set((state) => ({ 
+        ui: { ...state.ui, state: 'loadingDevice' }, 
+        selectedDeviceId: deviceId, 
+      }));
       
       const activeRange = get().timeRange;
-      if (activeRange !== 'live') {
-        set({ isHistoryLoading: true });
-      }
 
-      const [res, latestData] = await Promise.all([
-        fetchDeviceHistory(deviceId, activeRange).catch((e) => {
-          set({ historyError: 'Failed to load data for selected device' });
-          return { data: [], isMocked: false };
-        }),
+      const [, latestData] = await Promise.all([
+        get().loadChartData(deviceId, activeRange),
         fetchDeviceLatest(deviceId).catch(() => null)
       ]);
-      const historyData = res?.data || [];
-      const isMocked = res?.isMocked || false;
 
       set((state) => {
-        let newHistory = [];
-        if (Array.isArray(historyData)) {
-          const sortedData = activeRange === 'live' ? [...historyData].reverse() : historyData;
-          newHistory = sortedData
-            .slice(0, activeRange === 'live' ? HISTORY_LIMIT : sortedData.length)
-            .map(p => ({
-              timestamp: p.timestamp,
-              _ts: new Date(p.timestamp).getTime(),
-              AQI: p.sensors?.AQI,
-              CO2: p.sensors?.CO2,
-              VOC: p.sensors?.VOC,
-              Temperature: p.sensors?.Temperature,
-              Humidity: p.sensors?.Humidity,
-              PM1_0: p.sensors?.PM1_0 || p.sensors?.['PM1.0'],
-              PM2_5: p.sensors?.PM2_5 || p.sensors?.['PM2.5'],
-              PM4_0: p.sensors?.PM4_0 || p.sensors?.['PM4.0'],
-              PM10: p.sensors?.PM10,
-              NOX: p.sensors?.NOX,
-            }));
-        }
-
         const latestSensors = latestData?.sensors ? {
           AQI: latestData.sensors.AQI,
           CO2: latestData.sensors.CO2,
@@ -529,9 +512,7 @@ export const useDashboardStore = create((set, get) => ({
 
         return {
           deviceList: updatedDevices,
-          history: newHistory,
           isHistoryLoading: false,
-          isHistoryMocked: isMocked,
           sensors: { latest: latestSensors },
           alarms: {
             activeAlarms: generateAlarmsList(latestSensors, [], new Date().toLocaleTimeString(), deviceId, latestData?.name || deviceId),
@@ -640,18 +621,55 @@ export const useDashboardStore = create((set, get) => ({
       let newStats = state.stats;
 
       if (payload.deviceId === state.selectedDeviceId) {
+        const prevHistory = state.history || [];
+        const prevLen = prevHistory.length;
+        const firstPrevTs = prevLen > 0 ? prevHistory[0]._ts : null;
+        const lastPrevTs = prevLen > 0 ? prevHistory[prevLen - 1]._ts : null;
+
+        console.log('[GRAPH-DEBUG] BEFORE handleSensorData history mutation', {
+          selectedDeviceId: state.selectedDeviceId,
+          timeRange: state.timeRange,
+          previousHistoryLength: prevLen,
+          firstTimestamp: firstPrevTs ? new Date(firstPrevTs).toISOString() : null,
+          lastTimestamp: lastPrevTs ? new Date(lastPrevTs).toISOString() : null,
+          first10Timestamps: prevHistory.slice(0, 10).map(p => new Date(p._ts).toISOString()),
+          last10Timestamps: prevHistory.slice(-10).map(p => new Date(p._ts).toISOString())
+        });
+
+        console.log('[GRAPH-DEBUG] INCOMING MQTT PACKET', {
+          deviceId: payload.deviceId,
+          incomingTimestamp: payload.timestamp,
+          serverTimestamp: nowIso,
+          parsedTimestampMs: now
+        });
+
         if (state.timeRange === 'live') {
           const newHistoryPoint = {
             timestamp: nowIso,
             _ts: now,
             ...normalizedSensors
           };
-          newHistory = [...state.history, newHistoryPoint];
-          if (newHistory.length > HISTORY_LIMIT) {
-            newHistory = newHistory.slice(newHistory.length - HISTORY_LIMIT);
-          }
+          
+          // Merge, deduplicate by timestamp/_ts, sort ascending, and prune points older than 60 minutes
+          const combined = [...state.history, newHistoryPoint];
+          const dedupMap = new Map();
+          combined.forEach(p => {
+            if (p && p._ts) dedupMap.set(p._ts, p);
+          });
+          const sorted = Array.from(dedupMap.values()).sort((a, b) => a._ts - b._ts);
+          const cutoff = now - LIVE_RETENTION_MS;
+          newHistory = sorted.filter(p => p._ts >= cutoff);
         }
-         const newTotalPackets = state.device.totalPackets + 1;
+
+        const newLen = newHistory.length;
+        console.log('[GRAPH-DEBUG] AFTER handleSensorData history mutation', {
+          newHistoryLength: newLen,
+          firstTimestamp: newLen > 0 ? new Date(newHistory[0]._ts).toISOString() : null,
+          lastTimestamp: newLen > 0 ? new Date(newHistory[newLen - 1]._ts).toISOString() : null,
+          first10Timestamps: newHistory.slice(0, 10).map(p => new Date(p._ts).toISOString()),
+          last10Timestamps: newHistory.slice(-10).map(p => new Date(p._ts).toISOString())
+        });
+        const newTotalPackets = state.device.totalPackets + 1;
         newDevice = {
           ...state.device,
           info: {

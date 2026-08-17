@@ -3,7 +3,7 @@ import CountUp from 'react-countup';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import { cn } from '../../utils/cn';
 
-export function MetricCard({ icon: Icon, title, value, unit, statusObj, sparklineData, className, isToggledOff, onClick, onMouseEnter, onMouseLeave }) {
+export function MetricCard({ icon: Icon, title, value, unit, statusObj, sparklineData, className }) {
   const hexMap = {
     green: '#10b981',
     yellow: '#f59e0b',
@@ -13,7 +13,7 @@ export function MetricCard({ icon: Icon, title, value, unit, statusObj, sparklin
     gray: '#6b7280'
   };
   
-  const activeColor = isToggledOff ? '#9ca3af' : (hexMap[statusObj?.color] || hexMap.green);
+  const activeColor = hexMap[statusObj?.color] || hexMap.green;
 
   const textColorsMap = {
     green: 'text-[#10b981]',
@@ -23,7 +23,7 @@ export function MetricCard({ icon: Icon, title, value, unit, statusObj, sparklin
     blue: 'text-[#3b82f6]',
     gray: 'text-[#6b7280]'
   };
-  const textColor = isToggledOff ? 'text-[#9ca3af]' : textColorsMap[statusObj?.color || 'green'];
+  const textColor = textColorsMap[statusObj?.color || 'green'];
 
   const data = sparklineData || [
     { value: value * 0.9 },
@@ -38,13 +38,9 @@ export function MetricCard({ icon: Icon, title, value, unit, statusObj, sparklin
 
   return (
     <div 
-      onClick={onClick}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
       className={cn(
-        "bg-white rounded-[20px] shadow-[0_2px_12px_rgba(0,0,0,0.04)] p-[16px] pb-[16px] flex flex-col justify-between h-[170px] overflow-hidden cursor-pointer",
+        "bg-white rounded-[20px] shadow-[0_2px_12px_rgba(0,0,0,0.04)] p-[16px] pb-[16px] flex flex-col justify-between h-[170px] overflow-hidden select-none",
         "transition-all duration-150 hover:-translate-y-[2px] hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] border border-neutral-100/50", 
-        isToggledOff && "opacity-45 border-dashed border-neutral-300 hover:translate-y-0 hover:shadow-[0_2px_12px_rgba(0,0,0,0.04)]",
         className
       )}
     >
@@ -52,8 +48,7 @@ export function MetricCard({ icon: Icon, title, value, unit, statusObj, sparklin
         <div 
           className={cn(
             "w-[50px] h-[50px] flex items-center justify-center shrink-0 text-white",
-            typeof Icon === 'string' ? "" : "rounded-full shadow-sm",
-            isToggledOff && "grayscale opacity-50"
+            typeof Icon === 'string' ? "" : "rounded-full shadow-sm"
           )}
           style={typeof Icon === 'string' ? { backgroundColor: 'transparent' } : { backgroundColor: activeColor }}
         >

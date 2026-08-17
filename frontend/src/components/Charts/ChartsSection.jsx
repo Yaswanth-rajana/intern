@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
   ResponsiveContainer, ReferenceArea, Brush 
@@ -69,15 +69,69 @@ const processDataWithGapsAndDetect = (data, range) => {
     rangeDurationMs = 30 * 24 * 60 * 60 * 1000;
   }
 
-  const queryStartMs = nowTimeMs - rangeDurationMs;
-  const queryEndMs = nowTimeMs;
+  const rawCount = (data || []).length;
+  const firstHistoryTs = rawCount > 0 ? (data[0]._ts || new Date(data[0].timestamp).getTime()) : null;
+  const lastHistoryTs = rawCount > 0 ? (data[rawCount - 1]._ts || new Date(data[rawCount - 1].timestamp).getTime()) : null;
 
-  // Filter input data to keep only points falling strictly within the selected range window
-  const sorted = [...(data || [])]
-    .filter(p => p._ts && p._ts >= queryStartMs && p._ts <= queryEndMs)
+  console.log('[GRAPH-DEBUG] BEFORE processDataWithGapsAndDetect', {
+    range,
+    historyLength: rawCount,
+    firstHistoryTimestamp: firstHistoryTs ? new Date(firstHistoryTs).toISOString() : null,
+    lastHistoryTimestamp: lastHistoryTs ? new Date(lastHistoryTs).toISOString() : null,
+    nowTimeMsISO: new Date(nowTimeMs).toISOString()
+  });
+
+  // Normalize and validate all input data points
+  const validPoints = (data || [])
+    .map(p => {
+      const ts = typeof p._ts === 'number' && Number.isFinite(p._ts)
+        ? p._ts 
+        : (p.timestamp ? new Date(p.timestamp).getTime() : null);
+      if (!ts || !Number.isFinite(ts)) return null;
+
+      const formatVal = (v) => {
+        if (v === undefined || v === null || isNaN(v)) return null;
+        return typeof v === 'number' ? Number(v) : parseFloat(v) || null;
+      };
+
+      return {
+        timestamp: p.timestamp,
+        _ts: ts,
+        AQI: formatVal(p.AQI),
+        CO2: formatVal(p.CO2),
+        VOC: formatVal(p.VOC),
+        Temperature: formatVal(p.Temperature),
+        Humidity: formatVal(p.Humidity),
+        PM1_0: formatVal(p.PM1_0),
+        PM2_5: formatVal(p.PM2_5),
+        PM4_0: formatVal(p.PM4_0),
+        PM10: formatVal(p.PM10),
+        NOX: formatVal(p.NOX),
+      };
+    })
+    .filter(Boolean)
     .sort((a, b) => a._ts - b._ts);
 
+  let queryStartMs = nowTimeMs - rangeDurationMs;
+  let queryEndMs = nowTimeMs;
+
+  let sorted = validPoints;
+  if (range !== 'live') {
+    sorted = validPoints.filter(p => p._ts >= queryStartMs - gapThresholdMs && p._ts <= queryEndMs + gapThresholdMs);
+  }
+
+  if (sorted.length > 0) {
+    queryStartMs = Math.min(queryStartMs, sorted[0]._ts);
+    queryEndMs = Math.max(queryEndMs, sorted[sorted.length - 1]._ts);
+  }
+
   if (sorted.length === 0) {
+    console.log('[GRAPH-DEBUG] processDataWithGapsAndDetect - EMPTY sorted', {
+      rawCount,
+      range,
+      queryStartMs: new Date(queryStartMs).toISOString(),
+      queryEndMs: new Date(queryEndMs).toISOString()
+    });
     return {
       chartData: [],
       gaps: [],
@@ -129,7 +183,51 @@ const processDataWithGapsAndDetect = (data, range) => {
     });
   }
 
+  const chartCount = chartData.length;
+  const firstChartTs = chartCount > 0 ? chartData[0]._ts : null;
+  const lastChartTs = chartCount > 0 ? chartData[chartCount - 1]._ts : null;
+
+  console.log('[GRAPH-DEBUG] AFTER processDataWithGapsAndDetect', {
+    range,
+    historyLength: rawCount,
+    sortedLength: sorted.length,
+    chartDataLength: chartCount,
+    firstHistoryTimestamp: firstHistoryTs ? new Date(firstHistoryTs).toISOString() : null,
+    lastHistoryTimestamp: lastHistoryTs ? new Date(lastHistoryTs).toISOString() : null,
+    firstChartTimestamp: firstChartTs ? new Date(firstChartTs).toISOString() : null,
+    lastChartTimestamp: lastChartTs ? new Date(lastChartTs).toISOString() : null,
+    queryStartMsISO: new Date(queryStartMs).toISOString(),
+    queryEndMsISO: new Date(queryEndMs).toISOString(),
+    gapsCount: gaps.length,
+    gapsDetails: gaps.map(g => ({
+      start: new Date(g.start).toISOString(),
+      end: new Date(g.end).toISOString(),
+      durationMin: ((g.end - g.start) / 60000).toFixed(1)
+    }))
+  });
+
   return { chartData, gaps, queryStartMs, queryEndMs };
+};
+
+/**
+ * Strict precision rounding for tooltips:
+ * Temperature -> 1 decimal
+ * Humidity -> 1 decimal
+ * PM values -> 1 decimal
+ * CO2, VOC, NOX, AQI -> 0 decimals (integers)
+ */
+const formatTooltipValue = (val, key) => {
+  if (val === undefined || val === null || isNaN(val)) return '--';
+  const num = typeof val === 'number' ? val : parseFloat(val);
+  if (isNaN(num)) return String(val);
+
+  if (['CO2', 'VOC', 'NOX', 'AQI'].includes(key)) {
+    return Math.round(num).toString();
+  }
+  if (['Temperature', 'Humidity', 'PM1_0', 'PM2_5', 'PM4_0', 'PM10'].includes(key)) {
+    return num.toFixed(1);
+  }
+  return Number.isInteger(num) ? num.toString() : num.toFixed(1);
 };
 
 const CustomTooltip = ({ active, payload, label, range }) => {
@@ -149,7 +247,7 @@ const CustomTooltip = ({ active, payload, label, range }) => {
                   {config.label}
                 </span>
                 <span className="text-[11px] md:text-[13px] font-bold tabular-nums" style={{ color: config.color }}>
-                  {entry.value !== undefined && entry.value !== null ? entry.value : '--'}
+                  {formatTooltipValue(entry.value, entry.dataKey)}
                   {config.unit && <span className="text-[9px] md:text-[10px] ml-0.5 opacity-80">{config.unit}</span>}
                 </span>
               </div>
@@ -178,7 +276,7 @@ const CustomLegend = ({ visibleMetrics, toggleMetric, hoveredMetricKey, setHover
             onMouseEnter={() => !isMobile && setHoveredMetric(config.key)}
             onMouseLeave={() => !isMobile && setHoveredMetric(null)}
             className={cn(
-              "flex items-center gap-1.5 px-2.5 py-1 md:px-3 md:py-1.5 rounded-lg border transition-all text-[10px] md:text-[12px] font-bold shadow-sm",
+              "flex items-center gap-1.5 px-2.5 py-1 md:px-3 md:py-1.5 rounded-lg border transition-all text-[10px] md:text-[12px] font-bold shadow-sm cursor-pointer",
               isVisible 
                 ? cn("bg-white", theme.bg, theme.border, theme.text) 
                 : "bg-neutral-50 border-transparent text-neutral-400 hover:bg-neutral-100",
@@ -201,19 +299,53 @@ const CustomLegend = ({ visibleMetrics, toggleMetric, hoveredMetricKey, setHover
 export function ChartsSection() {
   const [viewMode, setViewMode] = useState('combined'); // 'combined' | 'grid'
   const [isMobile, setIsMobile] = useState(false);
+  const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
+  const resizeObserverRef = useRef(null);
 
-  // Resize listener to adapt chart axis layouts on smaller devices
+  // ResizeObserver callback ref for instant and reliable container dimension measurement
+  const containerCallbackRef = useCallback((node) => {
+    if (resizeObserverRef.current) {
+      resizeObserverRef.current.disconnect();
+      resizeObserverRef.current = null;
+    }
+
+    if (node) {
+      const { clientWidth, clientHeight } = node;
+      if (clientWidth > 0 && clientHeight > 0) {
+        setContainerDimensions({ width: clientWidth, height: clientHeight });
+      }
+
+      const observer = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+            setContainerDimensions({
+              width: Math.round(entry.contentRect.width),
+              height: Math.round(entry.contentRect.height)
+            });
+          }
+        }
+      });
+
+      observer.observe(node);
+      resizeObserverRef.current = observer;
+    }
+  }, []);
+
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
     };
     handleResize();
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+      }
+    };
   }, []);
-  
+
   const history = useDashboardStore(state => state.history);
-  const latestSensors = useDashboardStore(state => state.sensors.latest);
   const uiState = useDashboardStore(state => state.ui.state);
   const visibleMetrics = useDashboardStore(state => state.visibleMetrics);
   const toggleMetric = useDashboardStore(state => state.toggleMetric);
@@ -233,6 +365,75 @@ export function ChartsSection() {
     { label: '7D', value: '7d' },
     { label: '30D', value: '30d' },
   ];
+
+  const isEmptyHistory = !history || history.length === 0;
+
+  // Gap detection and boundary mapping (memoized unconditionally)
+  const { chartData, gaps, queryStartMs, queryEndMs } = useMemo(() => {
+    return processDataWithGapsAndDetect(history || [], timeRange);
+  }, [history, timeRange]);
+
+  // Comprehensive graph debug logging on every render
+  console.log('[GRAPH-DEBUG] ChartsSection RENDER', {
+    selectedDeviceId,
+    timeRange,
+    isHistoryLoading,
+    uiState,
+    historyLength: history ? history.length : 0,
+    firstHistoryItem: history && history.length > 0 ? history[0] : null,
+    lastHistoryItem: history && history.length > 0 ? history[history.length - 1] : null,
+    chartDataLength: chartData ? chartData.length : 0,
+    firstChartPoint: chartData && chartData.length > 0 ? chartData[0] : null,
+    lastChartPoint: chartData && chartData.length > 0 ? chartData[chartData.length - 1] : null,
+    queryStartMs,
+    queryEndMs,
+    gapsCount: gaps ? gaps.length : 0,
+    containerWidth: containerDimensions.width,
+    containerHeight: containerDimensions.height
+  });
+
+  // Logging per requirements 1 & 11
+  const initialLoggedRef = useRef(false);
+  useEffect(() => {
+    if (!initialLoggedRef.current && !isLoading && !isHistoryLoading) {
+      initialLoggedRef.current = true;
+      console.log('[GRAPH-DEBUG] INITIAL RENDER COMPLETE', {
+        loading: isLoading || isHistoryLoading,
+        dataLength: chartData.length,
+        firstTimestamp: chartData[0]?._ts,
+        lastTimestamp: chartData[chartData.length - 1]?._ts,
+        chartWidth: containerDimensions.width,
+        chartHeight: containerDimensions.height,
+        selectedRange: timeRange,
+      });
+    }
+  }, [isLoading, isHistoryLoading, chartData, containerDimensions, timeRange]);
+
+  useEffect(() => {
+    console.log('[CHART] chartData changed', {
+      length: chartData.length,
+      first: chartData[0],
+      last: chartData[chartData.length - 1],
+    });
+  }, [chartData]);
+
+  useEffect(() => {
+    console.log('[CHART] range changed', timeRange);
+  }, [timeRange]);
+
+  const activeMetricsList = useMemo(() => {
+    return METRIC_CONFIG.filter(c => visibleMetrics[c.key]);
+  }, [visibleMetrics]);
+
+  // If there's no data, construct boundary points to render empty axes grid
+  const dataForChart = useMemo(() => {
+    return isEmptyHistory 
+      ? [
+          { _ts: queryStartMs, ...NULL_SENSOR_VALS },
+          { _ts: queryEndMs, ...NULL_SENSOR_VALS }
+        ]
+      : chartData;
+  }, [isEmptyHistory, queryStartMs, queryEndMs, chartData]);
 
   const exportData = (type) => {
     if (!history || history.length === 0) return;
@@ -277,7 +478,7 @@ export function ChartsSection() {
         <button
           onClick={() => setViewMode('combined')}
           className={cn(
-            "flex items-center gap-1 px-2.5 py-1 md:px-3 md:py-1.5 text-[10px] md:text-[11px] font-bold rounded-md transition-all duration-150",
+            "flex items-center gap-1 px-2.5 py-1 md:px-3 md:py-1.5 text-[10px] md:text-[11px] font-bold rounded-md transition-all duration-150 cursor-pointer",
             viewMode === 'combined' ? "bg-white text-neutral-800 shadow-sm" : "text-neutral-500 hover:text-neutral-700"
           )}
         >
@@ -287,7 +488,7 @@ export function ChartsSection() {
         <button
           onClick={() => setViewMode('grid')}
           className={cn(
-            "flex items-center gap-1 px-2.5 py-1 md:px-3 md:py-1.5 text-[10px] md:text-[11px] font-bold rounded-md transition-all duration-150",
+            "flex items-center gap-1 px-2.5 py-1 md:px-3 md:py-1.5 text-[10px] md:text-[11px] font-bold rounded-md transition-all duration-150 cursor-pointer",
             viewMode === 'grid' ? "bg-white text-neutral-800 shadow-sm" : "text-neutral-500 hover:text-neutral-700"
           )}
         >
@@ -304,7 +505,7 @@ export function ChartsSection() {
             onClick={() => setTimeRange(f.value)}
             disabled={isHistoryLoading}
             className={cn(
-              "px-2 py-1 md:px-3 md:py-1 text-[10px] md:text-[11px] font-bold rounded-md transition-all duration-150",
+              "px-2 py-1 md:px-3 md:py-1 text-[10px] md:text-[11px] font-bold rounded-md transition-all duration-150 cursor-pointer",
               timeRange === f.value ? "bg-white text-neutral-800 shadow-sm" : "text-neutral-500 hover:text-neutral-700",
               isHistoryLoading && "opacity-50 cursor-not-allowed"
             )}
@@ -318,13 +519,13 @@ export function ChartsSection() {
       <div className="flex items-center gap-1.5">
         <button
           onClick={() => exportData('csv')}
-          className="flex items-center gap-1 px-2.5 py-1 md:px-3 md:py-1.5 text-[10px] md:text-[11px] font-bold text-neutral-600 bg-white border border-neutral-200 rounded-md hover:bg-neutral-50 transition-colors shadow-sm"
+          className="flex items-center gap-1 px-2.5 py-1 md:px-3 md:py-1.5 text-[10px] md:text-[11px] font-bold text-neutral-600 bg-white border border-neutral-200 rounded-md hover:bg-neutral-50 transition-colors shadow-sm cursor-pointer"
         >
           <Download className="w-3 md:w-3.5 h-3 md:h-3.5 shrink-0" /> CSV
         </button>
         <button
           onClick={() => exportData('json')}
-          className="flex items-center gap-1 px-2.5 py-1 md:px-3 md:py-1.5 text-[10px] md:text-[11px] font-bold text-neutral-600 bg-white border border-neutral-200 rounded-md hover:bg-neutral-50 transition-colors shadow-sm"
+          className="flex items-center gap-1 px-2.5 py-1 md:px-3 md:py-1.5 text-[10px] md:text-[11px] font-bold text-neutral-600 bg-white border border-neutral-200 rounded-md hover:bg-neutral-50 transition-colors shadow-sm cursor-pointer"
         >
           <Download className="w-3 md:w-3.5 h-3 md:h-3.5 shrink-0" /> JSON
         </button>
@@ -334,36 +535,19 @@ export function ChartsSection() {
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-[16px] shadow-soft p-4 md:p-[24px]">
+      <div className="bg-white rounded-[16px] shadow-soft p-4 md:p-[24px] min-h-[500px]">
         <div className="flex justify-between items-center mb-6">
           <Skeleton className="w-48 h-8" />
           <Skeleton className="w-64 h-8" />
         </div>
-        <Skeleton className="w-full h-[300px] md:h-[500px]" />
+        <Skeleton className="w-full h-[350px] md:h-[450px]" />
       </div>
     );
   }
 
-  const isEmptyHistory = !history || history.length === 0;
-
-  // Gap detection and boundary mapping
-  const { chartData, gaps, queryStartMs, queryEndMs } = processDataWithGapsAndDetect(history || [], timeRange);
-  const activeMetricsList = METRIC_CONFIG.filter(c => visibleMetrics[c.key]);
-
-  // If there's no data, construct boundary points to render empty axes grid
-  const dataForChart = isEmptyHistory 
-    ? [
-        { _ts: queryStartMs, ...NULL_SENSOR_VALS },
-        { _ts: queryEndMs, ...NULL_SENSOR_VALS }
-      ]
-    : chartData;
-
-  // Diagnostics printed in the console
-  console.log("DIAGNOSTIC - chartData length:", chartData?.length, "gaps detected:", gaps, "range:", timeRange);
-
   if (!selectedDeviceId) {
     return (
-      <div className="bg-white rounded-[16px] shadow-soft p-4 md:p-[24px] flex flex-col w-full min-h-[300px] items-center justify-center gap-4">
+      <div className="bg-white rounded-[16px] shadow-soft p-4 md:p-[24px] flex flex-col w-full min-h-[400px] items-center justify-center gap-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between w-full mb-4 gap-4">
           <h3 className="text-[20px] font-bold text-neutral-800">Air Quality Analytics</h3>
           {controlsContent}
@@ -385,8 +569,13 @@ export function ChartsSection() {
 
       {viewMode === 'combined' ? (
         /* ==================== COMBINED CHART VIEW ==================== */
-        <div className="flex-1 flex flex-col relative">
-          <div className="w-full h-[300px] md:h-[450px] relative">
+        <div className="flex-1 flex flex-col relative min-h-[400px]">
+          {/* Stable chart container with explicit min-height and callback ref */}
+          <div 
+            ref={containerCallbackRef}
+            className="w-full relative min-h-[350px] md:min-h-[450px] h-[350px] md:h-[450px]"
+            style={{ width: '100%', minHeight: isMobile ? 350 : 450, height: isMobile ? 350 : 450 }}
+          >
             {/* Transparent glassmorphism loading overlay */}
             {isHistoryLoading && (
               <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-[2px] rounded-xl transition-all duration-200">
@@ -411,7 +600,7 @@ export function ChartsSection() {
                 </div>
                 <button
                   onClick={() => setTimeRange(timeRange)}
-                  className="px-3 py-1.5 md:px-4 md:py-2 text-[11px] md:text-[12px] font-bold text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
+                  className="px-3 py-1.5 md:px-4 md:py-2 text-[11px] md:text-[12px] font-bold text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors shadow-sm cursor-pointer"
                 >
                   Retry Connection
                 </button>
@@ -432,7 +621,13 @@ export function ChartsSection() {
             )}
 
             {!historyError && (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer 
+                width="100%" 
+                height="100%" 
+                minHeight={isMobile ? 320 : 420}
+                debounce={50}
+                key={`combined-chart-${selectedDeviceId}-${timeRange}-${dataForChart.length > 0 ? 'active' : 'empty'}`}
+              >
                 {/* Responsive margin adjustment to maximize space on mobile */}
                 <LineChart 
                   data={dataForChart} 
@@ -451,7 +646,7 @@ export function ChartsSection() {
                     tickLine={false} 
                     tick={{ fill: '#a1a1aa', fontSize: isMobile ? 9 : 11 }} 
                     tickFormatter={(val) => formatXAxisTick(val, timeRange)}
-                    minTickGap={isMobile ? 50 : 80} // Declutter x-axis ticks
+                    minTickGap={isMobile ? 50 : 80}
                     dy={10} 
                   />
                   
@@ -508,7 +703,7 @@ export function ChartsSection() {
                     }}
                   />
 
-                  {/* Shaded Area Visualizer for data gaps (rendered before line to sit underneath) */}
+                  {/* Shaded Area Visualizer for data gaps */}
                   {gaps.map((gap, index) => (
                     <ReferenceArea
                       key={`gap-${index}`}
@@ -532,7 +727,7 @@ export function ChartsSection() {
 
                   <Tooltip 
                     content={<CustomTooltip range={timeRange} />} 
-                    wrapperStyle={{ zIndex: 1000 }} // Sits cleanly on top of other canvas layers
+                    wrapperStyle={{ zIndex: 1000 }}
                     cursor={{ stroke: '#e4e4e7', strokeWidth: 1.5, strokeDasharray: '4 4' }} 
                   />
                   
@@ -557,15 +752,15 @@ export function ChartsSection() {
                         activeDot={{ r: isMobile ? 4 : 6, strokeWidth: 0, fill: config.color, strokeOpacity: opacity }} 
                         connectNulls={false}
                         isAnimationActive={true}
-                        animationDuration={1000}
+                        animationDuration={600}
                       />
                     );
                   })}
 
-                  {/* Brush hidden on mobile devices as it is hard to slide with touch targets */}
+                  {/* Brush hidden on mobile devices */}
                   {!isMobile && (
                     <Brush 
-                      key={timeRange}
+                      key={`brush-${selectedDeviceId}-${timeRange}-${dataForChart.length}`}
                       dataKey="_ts" 
                       height={24} 
                       stroke="#e4e4e7" 
@@ -590,7 +785,7 @@ export function ChartsSection() {
         </div>
       ) : (
         /* ==================== GRID OF SPARKLINE CHARTS ==================== */
-        <div className="relative flex-1">
+        <div className="relative flex-1 min-h-[400px]">
           {/* Transparent glassmorphism loading overlay */}
           {isHistoryLoading && (
             <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/60 backdrop-blur-[2px] rounded-xl transition-all duration-200 min-h-[350px]">
@@ -615,14 +810,14 @@ export function ChartsSection() {
               </div>
               <button
                 onClick={() => setTimeRange(timeRange)}
-                className="px-3 py-1.5 md:px-4 md:py-2 text-[11px] md:text-[12px] font-bold text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
+                className="px-3 py-1.5 md:px-4 md:py-2 text-[11px] md:text-[12px] font-bold text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors shadow-sm cursor-pointer"
               >
                 Retry Connection
               </button>
             </div>
           ) : null}
 
-          {/* Centered Empty State Message Overlay (preserves axes and grid beneath it) */}
+          {/* Centered Empty State Message Overlay */}
           {isEmptyHistory && !isHistoryLoading && !historyError && (
             <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-neutral-50/15 backdrop-blur-[0.5px] rounded-2xl p-8 text-center gap-3 min-h-[350px] pointer-events-none">
               <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-400 shadow-sm border border-neutral-200/30">
@@ -661,84 +856,45 @@ export function ChartsSection() {
                           {config.label}
                         </span>
                       </div>
-                      {latestSensors[config.key] !== undefined && (
-                        <div className="flex items-baseline gap-0.5">
-                          <span className="font-bold text-[18px] md:text-[20px] text-neutral-800 tracking-tight">
-                            {latestSensors[config.key]}
-                          </span>
-                          {config.unit && (
-                            <span className="text-[10px] md:text-[11px] font-semibold text-neutral-400">
-                              {config.unit}
-                            </span>
-                          )}
-                        </div>
-                      )}
+                      <span className="text-[11px] md:text-[12px] font-bold text-neutral-400">
+                        {config.unit || 'Index'}
+                      </span>
                     </div>
 
-                    <div className="flex-1 w-full min-h-[140px] md:min-h-[170px] relative">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart 
-                          data={dataForChart} 
-                          syncId="iaq-grid-sync" // Sync hover cursors, dots, and tooltips globally in the grid
-                          margin={{ top: 5, right: 10, left: -25, bottom: 0 }}
-                        >
+                    <div className="flex-1 w-full relative min-h-[140px] md:min-h-[160px]">
+                      <ResponsiveContainer 
+                        width="100%" 
+                        height="100%" 
+                        debounce={50}
+                        key={`grid-chart-${config.key}-${selectedDeviceId}-${timeRange}-${dataForChart.length > 0 ? 'active' : 'empty'}`}
+                      >
+                        <LineChart data={dataForChart} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4e4e7" opacity={0.6} />
-                          
                           <XAxis 
                             dataKey="_ts" 
                             type="number"
                             domain={[queryStartMs, queryEndMs]}
-                            axisLine={false} 
-                            tickLine={false} 
-                            tick={{ fill: '#a1a1aa', fontSize: isMobile ? 8 : 9 }} 
-                            tickFormatter={(val) => formatXAxisTick(val, timeRange)}
-                            minTickGap={isMobile ? 45 : 60}
+                            hide={true} 
                           />
-                          
                           <YAxis 
-                            domain={['auto', 'auto']} // Autoscale to highlight shape comparisons
-                            axisLine={false}
-                            tickLine={false}
-                            tick={{ fill: '#a1a1aa', fontSize: isMobile ? 8 : 9 }}
-                            width={isMobile ? 25 : 30}
+                            domain={['dataMin - 1', 'dataMax + 1']} 
+                            hide={true} 
                           />
-                          
                           <Tooltip 
                             content={<CustomTooltip range={timeRange} />} 
                             wrapperStyle={{ zIndex: 1000 }}
                           />
-                          
-                          {/* Gap rendering on small multiples (rendered before line to sit underneath) */}
-                          {gaps.map((gap, index) => (
-                            <ReferenceArea
-                              key={`gap-grid-${index}`}
-                              x1={gap.start}
-                              x2={gap.end}
-                              fill="#94a3b8"
-                              fillOpacity={0.15}
-                              stroke="#94a3b8"
-                              strokeDasharray="4 4"
-                              strokeOpacity={0.4}
-                              label={{ 
-                                value: 'No data', 
-                                fill: '#94a3b8', 
-                                fontSize: isMobile ? 9 : 11, 
-                                fontWeight: '600', 
-                                position: 'center' 
-                              }}
-                            />
-                          ))}
-                          
-                          <Line
-                            type="monotone"
-                            dataKey={config.key}
-                            stroke={config.color}
+                          <Line 
+                            type="monotone" 
+                            dataKey={config.key} 
+                            stroke={config.color} 
                             strokeDasharray={config.strokeDasharray}
-                            strokeWidth={isMobile ? 2 : 3}
+                            strokeWidth={2.5} 
                             dot={false}
-                            activeDot={{ r: isMobile ? 3 : 5, strokeWidth: 0, fill: config.color }}
+                            activeDot={{ r: 4, strokeWidth: 0, fill: config.color }} 
                             connectNulls={false}
-                            isAnimationActive={false}
+                            isAnimationActive={true}
+                            animationDuration={400}
                           />
                         </LineChart>
                       </ResponsiveContainer>

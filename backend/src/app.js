@@ -18,6 +18,7 @@ app.use(express.json());
 app.use('/health', healthRouter);
 app.use('/devices', dataRouter);
 app.use('/auth', authRouter);
+app.use('/api/users', authRouter);
 app.use('/thresholds', thresholdsRouter);
 app.use('/tenants', tenantsRouter);
 app.use('/audit-logs', auditLogsRouter);

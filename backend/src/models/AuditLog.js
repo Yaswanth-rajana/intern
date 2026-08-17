@@ -21,6 +21,7 @@ const auditLogSchema = new mongoose.Schema(
         'UNASSIGN_DEVICE',
         'UPDATE_DEVICE_LOCATION',
         'UPDATE_THRESHOLD',
+        'ASSIGN_VIEWER_DEVICES',
         'LOGIN_SUCCESS',
         'LOGIN_FAILURE',
       ],

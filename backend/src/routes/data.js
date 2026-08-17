@@ -15,6 +15,8 @@ import { logAudit } from '../models/AuditLog.js';
 
 const router = express.Router();
 
+import ViewerDeviceAccess from '../models/ViewerDeviceAccess.js';
+
 // Protect all routes under /devices
 router.use(authenticateJWT);
 
@@ -86,7 +88,7 @@ router.patch('/:deviceId', requireRole('SUPER_ADMIN', 'CLIENT_ADMIN'), async (re
 
     const hasAccess = await verifyDeviceTenantAccess(deviceId, req.user);
     if (!hasAccess) {
-      return res.status(404).json({ error: 'Device not found' });
+      return res.status(403).json({ error: 'Access denied: You do not have permissions for this device' });
     }
 
     await updateDeviceLocation(deviceId, location, name);
@@ -111,7 +113,7 @@ router.get('/:deviceId/latest', async (req, res) => {
     const { deviceId } = req.params;
     const hasAccess = await verifyDeviceTenantAccess(deviceId, req.user);
     if (!hasAccess) {
-      return res.status(404).json({ error: 'Device not found' });
+      return res.status(403).json({ error: 'Access denied: You do not have permissions for this device' });
     }
 
     const latest = getLatestPayload(deviceId);
@@ -130,7 +132,7 @@ router.get('/:deviceId/history', async (req, res) => {
     const { deviceId } = req.params;
     const hasAccess = await verifyDeviceTenantAccess(deviceId, req.user);
     if (!hasAccess) {
-      return res.status(404).json({ error: 'Device not found' });
+      return res.status(403).json({ error: 'Access denied: You do not have permissions for this device' });
     }
 
     const page = parseInt(req.query.page) || 1;
@@ -149,7 +151,17 @@ router.get('/:deviceId/history', async (req, res) => {
 // GET /devices/export/csv
 router.get('/export/csv', async (req, res) => {
   try {
-    const filter = applyTenantFilter(req);
+    let filter = applyTenantFilter(req);
+
+    if (req.user.role === 'VIEWER') {
+      const viewerId = req.user.userId || req.user.id;
+      const assigned = await ViewerDeviceAccess.find({ viewerId }).distinct('deviceId');
+      if (assigned.length === 0) {
+        return res.status(404).send('No data available for export.');
+      }
+      filter.deviceId = { $in: assigned };
+    }
+
     const data = await SensorHistory.find(filter).sort({ timestamp: -1 }).lean();
     if (data.length === 0) {
       return res.status(404).send('No data available for export.');
@@ -166,7 +178,17 @@ router.get('/export/csv', async (req, res) => {
 // GET /devices/export/json
 router.get('/export/json', async (req, res) => {
   try {
-    const filter = applyTenantFilter(req);
+    let filter = applyTenantFilter(req);
+
+    if (req.user.role === 'VIEWER') {
+      const viewerId = req.user.userId || req.user.id;
+      const assigned = await ViewerDeviceAccess.find({ viewerId }).distinct('deviceId');
+      if (assigned.length === 0) {
+        return res.json([]);
+      }
+      filter.deviceId = { $in: assigned };
+    }
+
     const data = await SensorHistory.find(filter).sort({ timestamp: -1 }).lean();
     res.header('Content-Type', 'application/json');
     res.attachment('sensor_history.json');

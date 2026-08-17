@@ -98,6 +98,16 @@ export const deleteUser = async (userId) => {
   return response.data;
 };
 
+export const fetchViewerDevices = async (userId) => {
+  const response = await apiClient.get(`/auth/users/${userId}/devices`);
+  return response.data;
+};
+
+export const updateViewerDevices = async (userId, deviceIds) => {
+  const response = await apiClient.put(`/auth/users/${userId}/devices`, { deviceIds });
+  return response.data;
+};
+
 // Tenant & Super Admin APIs
 export const fetchTenants = async () => {
   const response = await apiClient.get('/tenants');

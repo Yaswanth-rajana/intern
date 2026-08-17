@@ -95,19 +95,14 @@ export function HistoricalRecords() {
   const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState(null);
 
-  // Active Applied Filters
-  const [appliedFilters, setAppliedFilters] = useState({
-    deviceId: 'All',
-    startDate: initialDates.start,
-    endDate: initialDates.end
-  });
-
   // Selected Reading for Details Drawer
   const [selectedReading, setSelectedReading] = useState(null);
 
   // Calculate preset ranges
   const applyPreset = (presetName) => {
     setActivePreset(presetName);
+    setError(null);
+    setPagination(prev => ({ ...prev, page: 1 }));
     const now = new Date();
     let start = null;
 
@@ -144,6 +139,11 @@ export function HistoricalRecords() {
 
   // Fetch readings from server
   const fetchReadings = React.useCallback(async (pageNumber = 1, pageLimit = pagination.limit) => {
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      setError('Start Date cannot be after End Date.');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -153,22 +153,32 @@ export function HistoricalRecords() {
         limit: pageLimit
       };
 
-      if (appliedFilters.deviceId !== 'All') {
-        params.deviceId = appliedFilters.deviceId;
+      if (selectedDeviceId !== 'All') {
+        params.deviceId = selectedDeviceId;
       }
-      if (appliedFilters.startDate) {
-        params.startDate = new Date(appliedFilters.startDate).toISOString();
+      if (startDate) {
+        params.startDate = new Date(startDate).toISOString();
       }
-      if (appliedFilters.endDate) {
-        params.endDate = new Date(appliedFilters.endDate).toISOString();
+      if (endDate) {
+        params.endDate = new Date(endDate).toISOString();
       }
 
       const response = await fetchHistoricalReadings(params);
-      setReadings(response.data || []);
+      const rawItems = response.data || [];
+      const dedupMap = new Map();
+      rawItems.forEach(item => {
+        const tsMs = item.timestamp ? new Date(item.timestamp).getTime() : 0;
+        const key = `${item.deviceId}_${tsMs}`;
+        if (!dedupMap.has(key)) {
+          dedupMap.set(key, item);
+        }
+      });
+      const cleanItems = Array.from(dedupMap.values());
+      setReadings(cleanItems);
       setPagination(response.pagination || {
         page: pageNumber,
         limit: pageLimit,
-        total: response.data?.length || 0,
+        total: cleanItems.length,
         totalPages: 1
       });
     } catch (err) {
@@ -177,24 +187,7 @@ export function HistoricalRecords() {
     } finally {
       setIsLoading(false);
     }
-  }, [appliedFilters, pagination.limit]);
-
-  // Trigger search on apply filters
-  const handleApplyFilters = (e) => {
-    if (e) e.preventDefault();
-
-    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
-      setError('Start Date cannot be after End Date.');
-      return;
-    }
-
-    setAppliedFilters({
-      deviceId: selectedDeviceId,
-      startDate,
-      endDate
-    });
-    setPagination(prev => ({ ...prev, page: 1 }));
-  };
+  }, [selectedDeviceId, startDate, endDate, pagination.limit]);
 
   // Reset filters
   const handleResetFilters = () => {
@@ -202,11 +195,7 @@ export function HistoricalRecords() {
     setStartDate('');
     setEndDate('');
     setActivePreset('AllTime');
-    setAppliedFilters({
-      deviceId: 'All',
-      startDate: '',
-      endDate: ''
-    });
+    setError(null);
     setPagination(prev => ({ ...prev, page: 1 }));
   };
 
@@ -215,21 +204,21 @@ export function HistoricalRecords() {
     setIsExporting(true);
     try {
       const params = {};
-      if (appliedFilters.deviceId !== 'All') {
-        params.deviceId = appliedFilters.deviceId;
+      if (selectedDeviceId !== 'All') {
+        params.deviceId = selectedDeviceId;
       }
-      if (appliedFilters.startDate) {
-        params.startDate = new Date(appliedFilters.startDate).toISOString();
+      if (startDate) {
+        params.startDate = new Date(startDate).toISOString();
       }
-      if (appliedFilters.endDate) {
-        params.endDate = new Date(appliedFilters.endDate).toISOString();
+      if (endDate) {
+        params.endDate = new Date(endDate).toISOString();
       }
 
       const blob = await exportReadingsCSV(params);
       const url = window.URL.createObjectURL(new Blob([blob]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `sensor_readings_${appliedFilters.deviceId}.csv`);
+      link.setAttribute('download', `sensor_readings_${selectedDeviceId}.csv`);
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
@@ -241,28 +230,28 @@ export function HistoricalRecords() {
     }
   };
 
-  // Fetch data whenever applied filters or page details change
+  // Fetch data whenever filters or page details change
   useEffect(() => {
     fetchReadings(pagination.page, pagination.limit);
-  }, [appliedFilters, pagination.page, pagination.limit, fetchReadings]);
+  }, [selectedDeviceId, startDate, endDate, pagination.page, pagination.limit, fetchReadings]);
 
   // Determine displays in summary box
   const summaryInfo = useMemo(() => {
     let activeDevName = 'All Devices';
-    if (appliedFilters.deviceId !== 'All') {
-      const dev = deviceList.find(d => d.deviceId === appliedFilters.deviceId);
-      activeDevName = dev ? (dev.name ? `${dev.name} (${dev.deviceId})` : dev.deviceId) : appliedFilters.deviceId;
+    if (selectedDeviceId !== 'All') {
+      const dev = deviceList.find(d => d.deviceId === selectedDeviceId);
+      activeDevName = dev ? (dev.name ? `${dev.name} (${dev.deviceId})` : dev.deviceId) : selectedDeviceId;
     }
 
     let activePeriod = 'All Time';
-    if (appliedFilters.startDate && appliedFilters.endDate) {
-      const start = new Date(appliedFilters.startDate).toLocaleDateString();
-      const end = new Date(appliedFilters.endDate).toLocaleDateString();
+    if (startDate && endDate) {
+      const start = new Date(startDate).toLocaleDateString();
+      const end = new Date(endDate).toLocaleDateString();
       activePeriod = `${start} - ${end}`;
-    } else if (appliedFilters.startDate) {
-      activePeriod = `Since ${new Date(appliedFilters.startDate).toLocaleDateString()}`;
-    } else if (appliedFilters.endDate) {
-      activePeriod = `Until ${new Date(appliedFilters.endDate).toLocaleDateString()}`;
+    } else if (startDate) {
+      activePeriod = `Since ${new Date(startDate).toLocaleDateString()}`;
+    } else if (endDate) {
+      activePeriod = `Until ${new Date(endDate).toLocaleDateString()}`;
     }
 
     const latestTimestamp = readings.length > 0 ? readings[0].timestamp : null;
@@ -272,7 +261,7 @@ export function HistoricalRecords() {
       period: activePeriod,
       latestTime: latestTimestamp ? formatDisplayTimeOnly(latestTimestamp) : 'N/A'
     };
-  }, [appliedFilters, readings, deviceList]);
+  }, [selectedDeviceId, startDate, endDate, readings, deviceList]);
 
   // Status badge styling helper
   const getBadgeClasses = (color) => {
@@ -337,13 +326,17 @@ export function HistoricalRecords() {
           Filter Historical Readings
         </div>
 
-        <form onSubmit={handleApplyFilters} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Device Selection */}
           <div className="space-y-1.5">
             <label className="block text-xs font-bold text-neutral-500">Device</label>
             <select
               value={selectedDeviceId}
-              onChange={e => { setSelectedDeviceId(e.target.value); setActivePreset(''); }}
+              onChange={e => {
+                setSelectedDeviceId(e.target.value);
+                setActivePreset('');
+                setPagination(prev => ({ ...prev, page: 1 }));
+              }}
               className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 bg-neutral-50 text-sm font-semibold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             >
               <option value="All">All Devices</option>
@@ -361,7 +354,11 @@ export function HistoricalRecords() {
             <input
               type="datetime-local"
               value={startDate}
-              onChange={e => { setStartDate(e.target.value); setActivePreset(''); }}
+              onChange={e => {
+                setStartDate(e.target.value);
+                setActivePreset('');
+                setPagination(prev => ({ ...prev, page: 1 }));
+              }}
               className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 bg-neutral-50 text-sm font-semibold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
@@ -372,7 +369,11 @@ export function HistoricalRecords() {
             <input
               type="datetime-local"
               value={endDate}
-              onChange={e => { setEndDate(e.target.value); setActivePreset(''); }}
+              onChange={e => {
+                setEndDate(e.target.value);
+                setActivePreset('');
+                setPagination(prev => ({ ...prev, page: 1 }));
+              }}
               className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 bg-neutral-50 text-sm font-semibold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
@@ -412,20 +413,14 @@ export function HistoricalRecords() {
               <button
                 type="button"
                 onClick={handleResetFilters}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-neutral-200 text-neutral-600 hover:bg-neutral-50 font-bold text-xs cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-neutral-200 text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 font-bold text-xs cursor-pointer transition-all"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 Reset
               </button>
-              <button
-                type="submit"
-                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-primary text-white hover:bg-primary-dark font-bold text-xs shadow-sm shadow-primary/20 cursor-pointer"
-              >
-                Apply Filters
-              </button>
             </div>
           </div>
-        </form>
+        </div>
       </div>
 
       {/* Summary Box */}

@@ -8,6 +8,7 @@ import SensorReading from '../models/SensorReading.js';
 import SystemStats from '../models/SystemStats.js';
 import Alarm from '../models/Alarm.js';
 import Threshold from '../models/Threshold.js';
+import ViewerDeviceAccess from '../models/ViewerDeviceAccess.js';
 
 const devices = new Map();
 const MAX_HISTORY = 100;
@@ -106,8 +107,21 @@ export const registerDeviceInCache = (deviceDoc) => {
 // Batch Processor (Background Sync)
 setInterval(async () => {
   if (insertQueue.length > 0) {
-    const batch = [...insertQueue];
+    const rawBatch = [...insertQueue];
     insertQueue = [];
+
+    // Deduplicate batch items by deviceId + 5-second timestamp bucket
+    const batchMap = new Map();
+    rawBatch.forEach(item => {
+      const tsMs = item.timestamp ? new Date(item.timestamp).getTime() : Date.now();
+      const roundedTs = Math.floor(tsMs / 5000) * 5000;
+      const key = `${item.deviceId}_${roundedTs}`;
+      if (!batchMap.has(key)) {
+        batchMap.set(key, item);
+      }
+    });
+    const batch = Array.from(batchMap.values());
+
     try {
       console.log('\n[Database] Saving Sensor History & Readings...');
       
@@ -222,8 +236,10 @@ setInterval(async () => {
           try {
             const io = getIO();
             if (tenantId) {
+              io.to(`tenant_admin:${tenantId}`).emit('alarm', alarm);
               io.to(`tenant:${tenantId}`).emit('alarm', alarm);
             }
+            io.to(`device:${deviceId}`).emit('alarm', alarm);
             io.to('superadmin_room').emit('alarm', alarm);
           } catch (err) {}
         } catch (err) {
@@ -236,8 +252,10 @@ setInterval(async () => {
       try {
         const io = getIO();
         if (tenantId) {
+          io.to(`tenant_admin:${tenantId}`).emit('deviceStatusChanged', { deviceId, status: targetStatus });
           io.to(`tenant:${tenantId}`).emit('deviceStatusChanged', { deviceId, status: targetStatus });
         }
+        io.to(`device:${deviceId}`).emit('deviceStatusChanged', { deviceId, status: targetStatus });
         io.to('superadmin_room').emit('deviceStatusChanged', { deviceId, status: targetStatus });
         broadcastDeviceListUpdated();
       } catch (err) {}
@@ -321,7 +339,11 @@ const checkThresholdAlarms = async (deviceId, tenantId, sensors) => {
 
           try {
             const io = getIO();
-            io.to(`tenant:${tenantId}`).emit('alarm', alarm);
+            if (tenantId) {
+              io.to(`tenant_admin:${tenantId}`).emit('alarm', alarm);
+              io.to(`tenant:${tenantId}`).emit('alarm', alarm);
+            }
+            io.to(`device:${deviceId}`).emit('alarm', alarm);
             io.to('superadmin_room').emit('alarm', alarm);
           } catch (err) {}
         }
@@ -524,15 +546,19 @@ export const initMqttService = () => {
       try {
         const io = getIO();
         if (trustedTenantId) {
+          io.to(`tenant_admin:${trustedTenantId}`).emit('sensorData', device.latestPayload);
           io.to(`tenant:${trustedTenantId}`).emit('sensorData', device.latestPayload);
         }
+        io.to(`device:${deviceId}`).emit('sensorData', device.latestPayload);
         io.to('superadmin_room').emit('sensorData', device.latestPayload);
         io.to('superadmin_room').emit('mqttStats', getMqttStats());
 
         if (prevStatus !== device.status) {
           if (trustedTenantId) {
+            io.to(`tenant_admin:${trustedTenantId}`).emit('deviceStatusChanged', { deviceId, status: device.status });
             io.to(`tenant:${trustedTenantId}`).emit('deviceStatusChanged', { deviceId, status: device.status });
           }
+          io.to(`device:${deviceId}`).emit('deviceStatusChanged', { deviceId, status: device.status });
           io.to('superadmin_room').emit('deviceStatusChanged', { deviceId, status: device.status });
           broadcastDeviceListUpdated();
         }
@@ -556,16 +582,26 @@ export const verifyDeviceTenantAccess = async (deviceId, user) => {
   }
 
   if (!user.tenantId) return false;
-  return device.tenantId && String(device.tenantId) === String(user.tenantId);
+  if (!device.tenantId || String(device.tenantId) !== String(user.tenantId)) {
+    return false;
+  }
+
+  // If VIEWER, verify explicit device assignment in ViewerDeviceAccess
+  if (user.role === 'VIEWER') {
+    const viewerId = user.userId || user.id;
+    if (!viewerId) return false;
+    const access = await ViewerDeviceAccess.findOne({ viewerId, deviceId }).lean();
+    return !!access;
+  }
+
+  return true;
 };
 
 export const getDeviceList = async (user = null, filters = {}) => {
   let allDevices = Array.from(devices.values());
 
   if (user) {
-    if (user.role !== 'SUPER_ADMIN') {
-      allDevices = allDevices.filter(d => d.tenantId && String(d.tenantId) === String(user.tenantId));
-    } else {
+    if (user.role === 'SUPER_ADMIN') {
       if (filters.tenantId) {
         allDevices = allDevices.filter(d => d.tenantId && String(d.tenantId) === String(filters.tenantId));
       }
@@ -584,6 +620,21 @@ export const getDeviceList = async (user = null, filters = {}) => {
           d.name?.toLowerCase().includes(searchLower)
         );
       }
+    } else if (user.role === 'CLIENT_ADMIN') {
+      allDevices = allDevices.filter(d => d.tenantId && String(d.tenantId) === String(user.tenantId));
+    } else if (user.role === 'VIEWER') {
+      const viewerId = user.userId || user.id;
+      let allowedDeviceIds = [];
+      if (viewerId) {
+        allowedDeviceIds = await ViewerDeviceAccess.find({ viewerId }).distinct('deviceId');
+      }
+      allDevices = allDevices.filter(d => 
+        d.tenantId && 
+        String(d.tenantId) === String(user.tenantId) && 
+        allowedDeviceIds.includes(d.deviceId)
+      );
+    } else {
+      allDevices = [];
     }
   }
 

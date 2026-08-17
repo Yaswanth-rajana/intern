@@ -59,20 +59,23 @@ export function SystemStatus() {
 
 
   return (
-    <div className="flex flex-col gap-[24px] opacity-[0.80]">
-      <div className="bg-white rounded-[16px] shadow-soft p-[24px] min-h-[220px]">
-        <h2 className="text-[16px] font-bold text-neutral-800 mb-6">System Status</h2>
-        <div className="flex flex-col gap-5 flex-1 justify-center">
-          {operations.map((op, idx) => (
-            <div key={idx} className="flex items-center justify-between border-b border-neutral-100 pb-3 last:border-0 last:pb-0">
-              <div className="flex items-center gap-3">
-                <span className={cn("w-2.5 h-2.5 rounded-full", op.status)}></span>
-                <span className="text-[14px] font-medium text-neutral-600">{op.label}</span>
-              </div>
-              <span className="text-[14px] font-bold text-neutral-800">{op.value}</span>
+    <div className="bg-white rounded-[16px] shadow-soft p-[24px] h-full flex flex-col justify-between">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-[16px] font-bold text-neutral-800">System Status</h2>
+        <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">
+          Live Status
+        </span>
+      </div>
+      <div className="flex flex-col gap-4 flex-1 justify-center">
+        {operations.map((op, idx) => (
+          <div key={idx} className="flex items-center justify-between border-b border-neutral-100 pb-3 last:border-0 last:pb-0">
+            <div className="flex items-center gap-3">
+              <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", op.status)}></span>
+              <span className="text-[14px] font-medium text-neutral-600">{op.label}</span>
             </div>
-          ))}
-        </div>
+            <span className="text-[14px] font-bold text-neutral-800">{op.value}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

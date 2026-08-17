@@ -1,6 +1,7 @@
 import express from 'express';
 import { parse } from 'json2csv';
 import SensorReading from '../models/SensorReading.js';
+import ViewerDeviceAccess from '../models/ViewerDeviceAccess.js';
 import { authenticateJWT, applyTenantFilter } from '../middleware/auth.js';
 import { verifyDeviceTenantAccess } from '../services/mqttService.js';
 
@@ -15,13 +16,34 @@ router.get('/', async (req, res) => {
     let query = applyTenantFilter(req);
     const { deviceId, startDate, endDate } = req.query;
 
-    // 1. Device scope & authorization validation
-    if (deviceId) {
-      const hasAccess = await verifyDeviceTenantAccess(deviceId, req.user);
-      if (!hasAccess) {
-        return res.status(403).json({ error: 'Access denied: You do not have permissions for this device' });
+    // Viewer device authorization enforcement
+    if (req.user.role === 'VIEWER') {
+      const viewerId = req.user.userId || req.user.id;
+      const assigned = await ViewerDeviceAccess.find({ viewerId }).distinct('deviceId');
+      
+      if (deviceId) {
+        if (!assigned.includes(deviceId)) {
+          return res.status(403).json({ error: 'Access denied: You do not have permissions for this device' });
+        }
+        query.deviceId = deviceId;
+      } else {
+        if (assigned.length === 0) {
+          return res.json({
+            data: [],
+            pagination: { page: 1, limit: 50, total: 0, totalPages: 0 }
+          });
+        }
+        query.deviceId = { $in: assigned };
       }
-      query.deviceId = deviceId;
+    } else {
+      // 1. Device scope & authorization validation for ADMINs
+      if (deviceId) {
+        const hasAccess = await verifyDeviceTenantAccess(deviceId, req.user);
+        if (!hasAccess) {
+          return res.status(403).json({ error: 'Access denied: You do not have permissions for this device' });
+        }
+        query.deviceId = deviceId;
+      }
     }
 
     // 2. Date range validation
@@ -56,14 +78,24 @@ router.get('/', async (req, res) => {
     if (limit > 100) limit = 100;
 
     // 4. Query execution
-    const total = await SensorReading.countDocuments(query);
-    const totalPages = Math.ceil(total / limit);
-
-    const data = await SensorReading.find(query)
+    const rawData = await SensorReading.find(query)
       .sort({ timestamp: -1 })
       .skip((page - 1) * limit)
-      .limit(limit)
+      .limit(limit * 2)
       .lean();
+
+    const dedupMap = new Map();
+    rawData.forEach(r => {
+      const tsMs = r.timestamp ? new Date(r.timestamp).getTime() : 0;
+      const key = `${r.deviceId}_${tsMs}`;
+      if (!dedupMap.has(key)) {
+        dedupMap.set(key, r);
+      }
+    });
+
+    const data = Array.from(dedupMap.values()).slice(0, limit);
+    const total = await SensorReading.countDocuments(query);
+    const totalPages = Math.ceil(total / limit);
 
     res.json({
       data,
@@ -112,12 +144,29 @@ router.get('/export/csv', async (req, res) => {
     let query = applyTenantFilter(req);
     const { deviceId, startDate, endDate } = req.query;
 
-    if (deviceId) {
-      const hasAccess = await verifyDeviceTenantAccess(deviceId, req.user);
-      if (!hasAccess) {
-        return res.status(403).json({ error: 'Access denied' });
+    if (req.user.role === 'VIEWER') {
+      const viewerId = req.user.userId || req.user.id;
+      const assigned = await ViewerDeviceAccess.find({ viewerId }).distinct('deviceId');
+      
+      if (deviceId) {
+        if (!assigned.includes(deviceId)) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+        query.deviceId = deviceId;
+      } else {
+        if (assigned.length === 0) {
+          return res.status(404).send('No data available for export with current filters.');
+        }
+        query.deviceId = { $in: assigned };
       }
-      query.deviceId = deviceId;
+    } else {
+      if (deviceId) {
+        const hasAccess = await verifyDeviceTenantAccess(deviceId, req.user);
+        if (!hasAccess) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+        query.deviceId = deviceId;
+      }
     }
 
     if (startDate || endDate) {

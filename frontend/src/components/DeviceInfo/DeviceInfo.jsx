@@ -45,11 +45,34 @@ export function DeviceInfo() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  if (isLoading || !device.info.deviceId) {
+  if (isLoading) {
     return (
       <div className="bg-white rounded-[16px] shadow-soft p-[24px] col-span-full flex flex-row items-center justify-between">
         <Skeleton className="h-10 w-64" />
         <Skeleton className="h-10 w-32" />
+      </div>
+    );
+  }
+
+  if (deviceList.length === 0 || !device.info.deviceId) {
+    return (
+      <div className="bg-white rounded-[16px] shadow-soft p-[20px] px-[24px] col-span-full flex flex-col sm:flex-row items-center justify-between gap-4 border border-amber-200/80 bg-amber-50/30">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+            <HardDrive className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="font-bold text-sm text-neutral-800">No Devices Assigned</h4>
+            <p className="text-xs text-neutral-500">Your account does not have access to any devices yet. Please ask your administrator to assign devices.</p>
+          </div>
+        </div>
+        <button
+          onClick={() => setActiveTab('Devices')}
+          className="shrink-0 flex items-center justify-center gap-2 px-4 py-2 bg-white hover:bg-neutral-50 text-neutral-700 font-bold text-xs rounded-xl transition-all border border-neutral-200 shadow-xs whitespace-nowrap cursor-pointer"
+        >
+          <Server className="w-3.5 h-3.5" />
+          View Devices Directory
+        </button>
       </div>
     );
   }

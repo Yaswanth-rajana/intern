@@ -14,9 +14,13 @@ import {
   Lock, 
   User as UserIcon,
   RefreshCw,
-  Clock
+  Clock,
+  Cpu,
+  Sliders,
+  AlertTriangle
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { AssignDevicesModal } from './AssignDevicesModal';
 
 export function UsersManager() {
   const currentUser = useAuthStore(state => state.user);
@@ -36,6 +40,9 @@ export function UsersManager() {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [deletingId, setDeletingId] = useState(null);
+
+  // Assign Devices Modal state
+  const [assigningUser, setAssigningUser] = useState(null);
 
   const loadUsers = async (showRefreshSpinner = false) => {
     if (showRefreshSpinner) setFetching(true);
@@ -122,6 +129,21 @@ export function UsersManager() {
     }
   };
 
+  const handleAssignmentsSaved = (userId, newDeviceIds) => {
+    setUsers(prev => prev.map(u => {
+      if (u._id === userId || u.userId === userId) {
+        return {
+          ...u,
+          assignedDeviceIds: newDeviceIds,
+          deviceCount: newDeviceIds.length
+        };
+      }
+      return u;
+    }));
+    setSuccessMsg(`Device assignments updated successfully.`);
+    setTimeout(() => setSuccessMsg(''), 4000);
+  };
+
   if (!canManageUsers) {
     return (
       <div className="p-8 max-w-xl mx-auto bg-white rounded-2xl shadow-soft border border-neutral-200/80 text-center mt-12">
@@ -151,7 +173,7 @@ export function UsersManager() {
           <p className="text-neutral-500 text-sm mt-1">
             {isSuperAdmin 
               ? 'Manage accounts across all tenants with platform role assignment.' 
-              : 'Manage Viewer account access credentials for your organization.'}
+              : 'Manage Viewer account access credentials and authorized devices for your organization.'}
           </p>
         </div>
 
@@ -193,7 +215,7 @@ export function UsersManager() {
             <p className="text-xs text-neutral-500">
               {isSuperAdmin 
                 ? 'Provision Super Admin, Client Admin, or Viewer user accounts.' 
-                : 'New accounts generated here are automatically assigned to your organization as read-only Viewers.'}
+                : 'New accounts generated here are created with zero device permissions until you explicitly assign devices.'}
             </p>
           </div>
         </div>
@@ -325,20 +347,29 @@ export function UsersManager() {
                   <th className="px-6 py-4 font-semibold">User</th>
                   <th className="px-6 py-4 font-semibold">Role</th>
                   <th className="px-6 py-4 font-semibold">Created Date</th>
+                  <th className="px-6 py-4 font-semibold">Devices</th>
                   <th className="px-6 py-4 font-semibold text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100 text-sm">
                 {users.map((u) => {
                   const isUserSuperAdmin = u.role === 'SUPER_ADMIN' || u.role === 'Admin';
+                  const isViewer = u.role === 'VIEWER';
                   const isSelf = u._id === currentUser?.id || u._id === currentUser?.userId;
 
                   let canDelete = false;
                   if (isSuperAdmin) {
                     canDelete = !isSelf && !isUserSuperAdmin;
                   } else if (isClientAdmin) {
-                    canDelete = u.role === 'VIEWER' && !isSelf;
+                    canDelete = isViewer && !isSelf;
                   }
+
+                  const deviceCount = typeof u.deviceCount === 'number' 
+                    ? u.deviceCount 
+                    : (u.assignedDeviceIds?.length || 0);
+
+                  const totalTenantDevices = u.totalTenantDevices || 0;
+                  const hasAllDevices = totalTenantDevices > 0 && deviceCount === totalTenantDevices;
 
                   return (
                     <tr key={u._id} className="hover:bg-neutral-50/60 transition-colors">
@@ -398,23 +429,70 @@ export function UsersManager() {
                         </div>
                       </td>
 
-                      {/* Actions */}
-                      <td className="px-6 py-4 text-right">
-                        {canDelete ? (
+                      {/* Devices Column */}
+                      <td className="px-6 py-4">
+                        {isViewer ? (
                           <button
-                            onClick={() => handleDeleteUser(u._id, u.username)}
-                            disabled={deletingId === u._id}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold text-xs rounded-lg transition-colors border border-rose-200/60 disabled:opacity-50 cursor-pointer"
-                            title="Delete Account"
+                            onClick={() => setAssigningUser(u)}
+                            className="text-left group cursor-pointer"
+                            title="Click to manage assigned devices"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Delete</span>
+                            {deviceCount === 0 ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 border border-amber-300/80 group-hover:border-amber-400 transition-all shadow-2xs">
+                                <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                                <span>No devices assigned</span>
+                              </span>
+                            ) : hasAllDevices ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-300/80 group-hover:border-emerald-400 transition-all shadow-2xs">
+                                <Cpu className="w-3 h-3 text-emerald-600 shrink-0" />
+                                <span>All Devices ({deviceCount})</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200 group-hover:border-purple-300 transition-all shadow-2xs">
+                                <Cpu className="w-3 h-3 text-purple-600 shrink-0" />
+                                <span>{deviceCount} {deviceCount === 1 ? 'Device' : 'Devices'}</span>
+                              </span>
+                            )}
                           </button>
                         ) : (
-                          <span className="text-xs text-neutral-400 font-medium italic">
-                            Protected
+                          <span className="text-xs font-bold text-neutral-600 bg-neutral-100/80 px-2.5 py-1 rounded-lg border border-neutral-200/60 inline-flex items-center gap-1.5">
+                            <Cpu className="w-3 h-3 text-neutral-400" />
+                            <span>{isUserSuperAdmin ? 'All' : 'All'}</span>
                           </span>
                         )}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {/* Assign Devices Button - Only for VIEWER users */}
+                          {isViewer && (
+                            <button
+                              onClick={() => setAssigningUser(u)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary font-bold text-xs rounded-lg transition-colors border border-primary/20 cursor-pointer"
+                              title="Assign Devices"
+                            >
+                              <Sliders className="w-3.5 h-3.5" />
+                              <span>Assign Devices</span>
+                            </button>
+                          )}
+
+                          {canDelete ? (
+                            <button
+                              onClick={() => handleDeleteUser(u._id, u.username)}
+                              disabled={deletingId === u._id}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold text-xs rounded-lg transition-colors border border-rose-200/60 disabled:opacity-50 cursor-pointer"
+                              title="Delete Account"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Delete</span>
+                            </button>
+                          ) : !isViewer ? (
+                            <span className="text-xs text-neutral-400 font-medium italic">
+                              Protected
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
 
                     </tr>
@@ -425,6 +503,14 @@ export function UsersManager() {
           </div>
         )}
       </div>
+
+      {/* Assign Devices Modal */}
+      <AssignDevicesModal
+        isOpen={!!assigningUser}
+        onClose={() => setAssigningUser(null)}
+        targetUser={assigningUser}
+        onSaved={handleAssignmentsSaved}
+      />
     </div>
   );
 }
