@@ -10,6 +10,7 @@ import { Settings } from './pages/Settings/Settings';
 import { AlarmsLog } from './pages/Alarms/AlarmsLog';
 import { UsersManager } from './pages/Users/UsersManager';
 import { HistoricalRecords } from './pages/HistoricalRecords/HistoricalRecords';
+import { DeviceActivityReports } from './pages/DeviceActivity/DeviceActivityReports';
 import { Login } from './pages/Login/Login';
 import { ConnectionStatus } from './components/ConnectionStatus/ConnectionStatus';
 import { useDashboardStore } from './store/dashboardStore';
@@ -68,14 +69,15 @@ function App() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'Clients':   return isSuperAdmin ? <ClientsManager /> : <Dashboard />;
-      case 'Users':     return <UsersManager />;
-      case 'Devices':   return isSuperAdmin ? <SuperAdminDevicesManager /> : <DevicesManager />;
-      case 'Settings':  return <Settings />;
-      case 'Alarms':    return <AlarmsLog />;
-      case 'History':   return <HistoricalRecords />;
+      case 'Clients':        return isSuperAdmin ? <ClientsManager /> : <Dashboard />;
+      case 'Users':          return <UsersManager />;
+      case 'Devices':        return isSuperAdmin ? <SuperAdminDevicesManager /> : <DevicesManager />;
+      case 'Settings':       return <Settings />;
+      case 'Alarms':         return <AlarmsLog />;
+      case 'History':        return <HistoricalRecords />;
+      case 'DeviceActivity': return isSuperAdmin ? <DeviceActivityReports /> : <Dashboard />;
       case 'Dashboard':
-      default:          return isSuperAdmin ? <SuperAdminDashboard /> : <Dashboard />;
+      default:               return isSuperAdmin ? <SuperAdminDashboard /> : <Dashboard />;
     }
   };
 

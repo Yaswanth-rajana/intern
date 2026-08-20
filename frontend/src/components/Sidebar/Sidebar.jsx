@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Server, Settings, Wind, LogOut, BellRing, X, Users, Building2, History } from 'lucide-react';
+import { LayoutDashboard, Server, Settings, Wind, LogOut, BellRing, X, Users, Building2, History, FileSpreadsheet } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useDashboardStore } from '../../store/dashboardStore';
 import { useAuthStore } from '../../store/authStore';
@@ -19,10 +19,12 @@ export function Sidebar({ className, isOpen, onClose }) {
     ...(isSuperAdmin ? [{ label: 'Clients', icon: Building2, value: 'Clients' }] : []),
     { label: 'Devices', icon: Server, value: 'Devices' },
     { label: 'Historical Records', icon: History, value: 'History' },
+    ...(isSuperAdmin ? [{ label: 'Device Activity Reports', icon: FileSpreadsheet, value: 'DeviceActivity' }] : []),
     { label: 'Alerts Log', icon: BellRing, value: 'Alarms' },
     ...((isSuperAdmin || isClientAdmin) ? [{ label: 'Users', icon: Users, value: 'Users' }] : []),
     { label: 'Settings', icon: Settings, value: 'Settings' },
   ];
+
 
   const handleNavClick = (value) => {
     setActiveTab(value);
@@ -61,7 +63,7 @@ export function Sidebar({ className, isOpen, onClose }) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-grow px-4 py-6 space-y-1.5">
+        <nav className="flex-grow px-3 py-6 space-y-1">
           {navItems.map((item) => {
             const isActive = activeTab === item.value;
             return (
@@ -69,14 +71,14 @@ export function Sidebar({ className, isOpen, onClose }) {
                 key={item.label}
                 onClick={() => handleNavClick(item.value)}
                 className={cn(
-                  "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-semibold text-sm cursor-pointer",
+                  "w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all duration-200 font-semibold text-[13px] cursor-pointer whitespace-nowrap text-left",
                   isActive
                     ? "bg-primary text-white shadow-lg shadow-primary/20"
                     : "hover:bg-neutral-800/50 hover:text-white"
                 )}
               >
                 <item.icon className="w-5 h-5 shrink-0" />
-                {item.label}
+                <span className="truncate">{item.label}</span>
               </button>
             );
           })}

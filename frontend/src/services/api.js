@@ -167,3 +167,18 @@ export const exportReadingsCSV = async (params = {}) => {
   });
   return response.data;
 };
+
+// SuperAdmin Daily Device Activity Reports API
+export const fetchDeviceActivityReport = async (params = {}) => {
+  const response = await apiClient.get('/api/superadmin/device-activity', { params });
+  return response.data;
+};
+
+export const downloadDeviceActivityReport = async (params = {}) => {
+  const response = await apiClient.get('/api/superadmin/device-activity/export/csv', {
+    params,
+    responseType: 'blob'
+  });
+  return response.data;
+};
+
