@@ -9,7 +9,7 @@ const deviceSchema = new mongoose.Schema(
     location: { type: String, default: 'Unknown' },
     status: {
       type: String,
-      enum: ['ONLINE', 'OFFLINE', 'UNASSIGNED', 'WARNING'],
+      enum: ['ONLINE', 'OFFLINE', 'UNASSIGNED', 'WARNING', 'ARCHIVED'],
       default: 'UNASSIGNED',
     },
     messageCount: { type: Number, default: 0 },

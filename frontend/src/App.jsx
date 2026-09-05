@@ -10,12 +10,10 @@ import { Settings } from './pages/Settings/Settings';
 import { AlarmsLog } from './pages/Alarms/AlarmsLog';
 import { UsersManager } from './pages/Users/UsersManager';
 import { HistoricalRecords } from './pages/HistoricalRecords/HistoricalRecords';
-import { DeviceActivityReports } from './pages/DeviceActivity/DeviceActivityReports';
 import { Login } from './pages/Login/Login';
 import { ConnectionStatus } from './components/ConnectionStatus/ConnectionStatus';
 import { useDashboardStore } from './store/dashboardStore';
 import { useAuthStore } from './store/authStore';
-import { ThemeProvider } from './context/ThemeContext';
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import { usePageVisibility } from './hooks/usePageVisibility';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -55,7 +53,7 @@ function App() {
   // 3. Show checking screen while checking stored token validity with backend
   if (isCheckingAuth) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-neutral-50 dark:bg-neutral-900 gap-4">
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#F3F5F8] gap-4">
         <div className="animate-spin rounded-full h-9 w-9 border-[3px] border-primary border-t-transparent shadow-sm"></div>
         <span className="text-[10px] font-extrabold text-neutral-400 uppercase tracking-widest animate-pulse">Restoring Session...</span>
       </div>
@@ -75,7 +73,6 @@ function App() {
       case 'Settings':       return <Settings />;
       case 'Alarms':         return <AlarmsLog />;
       case 'History':        return <HistoricalRecords />;
-      case 'DeviceActivity': return isSuperAdmin ? <DeviceActivityReports /> : <Dashboard />;
       case 'Dashboard':
       default:               return isSuperAdmin ? <SuperAdminDashboard /> : <Dashboard />;
     }
@@ -83,8 +80,7 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <ThemeProvider>
-        <div className="flex h-screen bg-neutral-100 overflow-hidden font-sans text-neutral-800">
+      <div className="flex h-screen bg-[#F3F5F8] overflow-hidden font-sans text-[#172033]">
 
           {/* Sidebar: always mounted, open/closed via prop */}
           <Sidebar
@@ -101,8 +97,10 @@ function App() {
               onMenuClick={() => setSidebarOpen(true)}
               onNotificationClick={() => setActiveTab('Alarms')}
             />
-            <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-              {renderContent()}
+            <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 flex flex-col justify-between min-h-0">
+              <div className="flex-1">
+                {renderContent()}
+              </div>
               <ConnectionStatus />
             </main>
           </div>
@@ -125,7 +123,6 @@ function App() {
             </div>
           )}
         </div>
-      </ThemeProvider>
     </ErrorBoundary>
   );
 }

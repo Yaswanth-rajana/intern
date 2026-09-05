@@ -87,7 +87,7 @@ export function SuperAdminDashboard() {
 
         <button
           onClick={loadPlatformOverview}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-neutral-50 text-neutral-700 font-semibold text-xs rounded-xl border border-neutral-200/80 shadow-xs transition-all cursor-pointer self-start sm:self-auto"
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#F8FAFC] hover:bg-white text-[#172033] font-semibold text-xs rounded-xl border border-[#E2E8F0] shadow-xs transition-all cursor-pointer self-start sm:self-auto"
         >
           <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin text-primary")} />
           <span>Refresh Analytics</span>
@@ -97,25 +97,25 @@ export function SuperAdminDashboard() {
       {/* Platform Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
         
-        <div className="bg-white p-5 rounded-2xl border border-neutral-200/80 shadow-soft flex flex-col justify-between">
+        <div className="bg-[#F8FAFC] p-5 rounded-2xl border border-[#E2E8F0] shadow-soft flex flex-col justify-between">
           <div className="flex items-center justify-between text-neutral-500 mb-2">
             <span className="text-[11px] font-bold uppercase tracking-wider">Total Clients</span>
             <Building2 className="w-5 h-5 text-primary" />
           </div>
-          <div className="text-3xl font-extrabold text-neutral-900">{totalClients}</div>
+          <div className="text-3xl font-extrabold text-[#172033]">{totalClients}</div>
           <div className="text-[11px] text-neutral-400 mt-2 font-medium">Registered SaaS Tenants</div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-neutral-200/80 shadow-soft flex flex-col justify-between">
+        <div className="bg-[#F8FAFC] p-5 rounded-2xl border border-[#E2E8F0] shadow-soft flex flex-col justify-between">
           <div className="flex items-center justify-between text-neutral-500 mb-2">
             <span className="text-[11px] font-bold uppercase tracking-wider">Total Devices</span>
             <Server className="w-5 h-5 text-blue-600" />
           </div>
-          <div className="text-3xl font-extrabold text-neutral-900">{totalDevices}</div>
+          <div className="text-3xl font-extrabold text-[#172033]">{totalDevices}</div>
           <div className="text-[11px] text-neutral-400 mt-2 font-medium">Platform Monitor Fleet</div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-neutral-200/80 shadow-soft flex flex-col justify-between">
+        <div className="bg-[#F8FAFC] p-5 rounded-2xl border border-[#E2E8F0] shadow-soft flex flex-col justify-between">
           <div className="flex items-center justify-between text-neutral-500 mb-2">
             <span className="text-[11px] font-bold uppercase tracking-wider">Online Devices</span>
             <CheckCircle2 className="w-5 h-5 text-emerald-600" />
@@ -124,7 +124,7 @@ export function SuperAdminDashboard() {
           <div className="text-[11px] text-emerald-700/70 mt-2 font-semibold">Active telemetry stream</div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-neutral-200/80 shadow-soft flex flex-col justify-between">
+        <div className="bg-[#F8FAFC] p-5 rounded-2xl border border-[#E2E8F0] shadow-soft flex flex-col justify-between">
           <div className="flex items-center justify-between text-neutral-500 mb-2">
             <span className="text-[11px] font-bold uppercase tracking-wider">Offline Devices</span>
             <AlertTriangle className="w-5 h-5 text-rose-500" />
@@ -133,7 +133,7 @@ export function SuperAdminDashboard() {
           <div className="text-[11px] text-neutral-400 mt-2 font-medium">Offline or warning state</div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-neutral-200/80 shadow-soft flex flex-col justify-between">
+        <div className="bg-[#F8FAFC] p-5 rounded-2xl border border-[#E2E8F0] shadow-soft flex flex-col justify-between">
           <div className="flex items-center justify-between text-neutral-500 mb-2">
             <span className="text-[11px] font-bold uppercase tracking-wider">Unassigned</span>
             <Unlink className="w-5 h-5 text-amber-500" />
@@ -149,34 +149,34 @@ export function SuperAdminDashboard() {
         
         <div 
           onClick={() => setActiveTab('Clients')}
-          className="bg-gradient-to-br from-neutral-900 to-neutral-800 text-white p-6 rounded-2xl shadow-lg border border-neutral-800 flex items-center justify-between cursor-pointer hover:border-primary/50 transition-all group"
+          className="bg-[#F8FAFC] text-[#172033] p-6 rounded-2xl shadow-soft border border-[#E2E8F0] flex items-center justify-between cursor-pointer hover:border-primary/50 hover:shadow-md transition-all group"
         >
           <div>
-            <div className="flex items-center gap-2 text-primary-light font-bold text-xs uppercase tracking-wider mb-1">
+            <div className="flex items-center gap-2 text-primary font-bold text-xs uppercase tracking-wider mb-1">
               <Building2 className="w-4 h-4" />
               <span>Tenant Management</span>
             </div>
-            <h3 className="text-xl font-bold text-white">Client Directory & Provisioning</h3>
-            <p className="text-xs text-neutral-400 mt-1">Create clients, manage Client Admin credentials, and view tenant stats.</p>
+            <h3 className="text-xl font-bold text-[#172033]">Client Directory & Provisioning</h3>
+            <p className="text-xs text-neutral-500 mt-1">Create clients, manage Client Admin credentials, and view tenant stats.</p>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center group-hover:bg-primary group-hover:text-white transition-all shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-white transition-all shrink-0">
             <ArrowRight className="w-5 h-5" />
           </div>
         </div>
 
         <div 
           onClick={() => setActiveTab('Devices')}
-          className="bg-gradient-to-br from-neutral-900 to-neutral-800 text-white p-6 rounded-2xl shadow-lg border border-neutral-800 flex items-center justify-between cursor-pointer hover:border-primary/50 transition-all group"
+          className="bg-[#F8FAFC] text-[#172033] p-6 rounded-2xl shadow-soft border border-[#E2E8F0] flex items-center justify-between cursor-pointer hover:border-primary/50 hover:shadow-md transition-all group"
         >
           <div>
-            <div className="flex items-center gap-2 text-blue-400 font-bold text-xs uppercase tracking-wider mb-1">
+            <div className="flex items-center gap-2 text-blue-600 font-bold text-xs uppercase tracking-wider mb-1">
               <Server className="w-4 h-4" />
               <span>Hardware Allocation</span>
             </div>
-            <h3 className="text-xl font-bold text-white">Device Ownership & Assignment</h3>
-            <p className="text-xs text-neutral-400 mt-1">Assign unassigned hardware, reassign devices across tenants, or unassign telemetry.</p>
+            <h3 className="text-xl font-bold text-[#172033]">Device Ownership & Assignment</h3>
+            <p className="text-xs text-neutral-500 mt-1">Assign unassigned hardware, reassign devices across tenants, or unassign telemetry.</p>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all shrink-0">
             <ArrowRight className="w-5 h-5" />
           </div>
         </div>
@@ -184,7 +184,7 @@ export function SuperAdminDashboard() {
       </div>
 
       {/* Client Overview Table */}
-      <div className="bg-white rounded-2xl shadow-soft border border-neutral-200/80 overflow-hidden">
+      <div className="bg-[#F8FAFC] rounded-2xl shadow-soft border border-[#E2E8F0] overflow-hidden">
         <div className="px-6 py-5 border-b border-neutral-100 flex items-center justify-between">
           <div>
             <h2 className="text-base font-bold text-neutral-900">Client Platform Summary</h2>

@@ -260,7 +260,7 @@ router.delete('/:id', async (req, res) => {
 router.post('/:tenantId/devices', async (req, res) => {
   try {
     const { tenantId } = req.params;
-    const { deviceId, location, reassign } = req.body;
+    const { deviceId, location, reassign, buildingId, floorId, roomId } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(tenantId)) {
       return res.status(400).json({ error: 'Invalid tenant ID' });
@@ -301,7 +301,7 @@ router.post('/:tenantId/devices', async (req, res) => {
     }
 
     // Single source of truth update in DB and memory cache
-    await updateDeviceTenant(deviceId, tenant._id, location);
+    await updateDeviceTenant(deviceId, tenant._id, location, buildingId, floorId, roomId);
 
     const isReassignment = currentTenantId !== null && currentTenantId !== targetTenantId;
     await logAudit({

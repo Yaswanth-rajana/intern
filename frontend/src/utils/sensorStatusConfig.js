@@ -4,10 +4,10 @@ export const SENSOR_CONFIG = {
     min: 0,
     max: 500,
     thresholds: [
-      { max: 25, label: 'Excellent', color: 'green' },
       { max: 50, label: 'Good', color: 'green' },
       { max: 100, label: 'Moderate', color: 'yellow' },
-      { max: 200, label: 'Unhealthy', color: 'orange' },
+      { max: 150, label: 'Poor', color: 'orange' },
+      { max: 200, label: 'Unhealthy', color: 'red' },
       { max: Infinity, label: 'Hazardous', color: 'red' },
     ]
   },
@@ -106,18 +106,6 @@ export const SENSOR_CONFIG = {
       { max: 80, label: 'Very Humid', color: 'orange' },
       { max: Infinity, label: 'Excessive', color: 'red' },
     ]
-  },
-  NOX: {
-    unit: 'ppb',
-    min: 0,
-    max: 500,
-    thresholds: [
-      { max: 50, label: 'Safe', color: 'green' },
-      { max: 100, label: 'Normal', color: 'green' },
-      { max: 200, label: 'Elevated', color: 'yellow' },
-      { max: 300, label: 'High', color: 'orange' },
-      { max: Infinity, label: 'Dangerous', color: 'red' },
-    ]
   }
 };
 
@@ -136,6 +124,7 @@ export function getSensorStatus(key, value) {
 }
 
 export function updateSensorLimits(key, warningLimit, criticalLimit) {
+  if (key === 'AQI') return; // Fixed standard scale (0-50 Good, 51-100 Moderate, 101-150 Poor, 151-200 Unhealthy)
   const config = SENSOR_CONFIG[key];
   if (!config || !config.thresholds || config.thresholds.length < 5) return;
 
@@ -154,4 +143,3 @@ export function updateSensorLimits(key, warningLimit, criticalLimit) {
     config.thresholds[3].max = criticalLimit;
   }
 }
-

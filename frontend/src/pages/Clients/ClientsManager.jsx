@@ -1,5 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { fetchTenants, createTenant, updateTenant, deleteTenant, fetchTenant, unassignDevice } from '../../services/api';
+import { 
+  fetchTenants, 
+  createTenant, 
+  updateTenant, 
+  deleteTenant, 
+  fetchTenant, 
+  unassignDevice
+} from '../../services/api';
 import { 
   Building2, 
   Plus, 
@@ -9,16 +16,13 @@ import {
   AlertCircle, 
   Server, 
   Users, 
-  Shield, 
   Eye, 
   EyeOff, 
-  Edit3, 
-  Power, 
   X, 
   Clock, 
-  ChevronRight,
   UserPlus,
-  Trash2
+  Trash2,
+  Edit3
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
@@ -34,7 +38,6 @@ export function ClientsManager() {
 
   // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [editingTenant, setEditingTenant] = useState(null);
   const [selectedTenantDetails, setSelectedTenantDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
@@ -46,6 +49,8 @@ export function ClientsManager() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+
 
   const loadTenants = async (showSpinner = false) => {
     if (showSpinner) setFetching(true);
@@ -179,21 +184,6 @@ export function ClientsManager() {
     }
   };
 
-  const handleUnassignDeviceFromTenant = async (tenantId, deviceId) => {
-    if (!window.confirm(`Are you sure you want to unassign device "${deviceId}"?`)) {
-      return;
-    }
-    try {
-      await unassignDevice(tenantId, deviceId);
-      setSuccessMsg(`Device ${deviceId} unassigned successfully.`);
-      await handleViewDetails(tenantId);
-      await loadTenants();
-      setTimeout(() => setSuccessMsg(''), 5000);
-    } catch (err) {
-      setErrorMsg(err.response?.data?.error || 'Failed to unassign device');
-    }
-  };
-
   // Filtered tenants
   const filteredTenants = tenants.filter(t => {
     const matchesSearch = t.name.toLowerCase().includes(search.toLowerCase()) || t.slug.toLowerCase().includes(search.toLowerCase());
@@ -227,7 +217,7 @@ export function ClientsManager() {
           <button
             onClick={() => loadTenants(true)}
             disabled={fetching}
-            className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-white hover:bg-neutral-50 text-neutral-700 font-semibold text-xs rounded-xl border border-neutral-200/80 shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+            className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-[#F8FAFC] hover:bg-white text-[#172033] font-semibold text-xs rounded-xl border border-[#E2E8F0] shadow-xs transition-all disabled:opacity-50 cursor-pointer"
           >
             <RefreshCw className={cn("w-3.5 h-3.5", fetching && "animate-spin text-primary")} />
             <span>Refresh</span>
@@ -260,15 +250,15 @@ export function ClientsManager() {
 
       {/* Metric Cards Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        <div className="bg-white p-5 rounded-2xl border border-neutral-200/80 shadow-soft">
+        <div className="bg-[#F8FAFC] p-5 rounded-2xl border border-[#E2E8F0] shadow-soft">
           <div className="flex items-center justify-between text-neutral-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Total Clients</span>
             <Building2 className="w-5 h-5 text-primary" />
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-neutral-900">{tenants.length}</div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-[#172033]">{tenants.length}</div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-neutral-200/80 shadow-soft">
+        <div className="bg-[#F8FAFC] p-5 rounded-2xl border border-[#E2E8F0] shadow-soft">
           <div className="flex items-center justify-between text-neutral-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Active Tenants</span>
             <CheckCircle2 className="w-5 h-5 text-emerald-600" />
@@ -276,25 +266,25 @@ export function ClientsManager() {
           <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600">{activeTenantsCount}</div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-neutral-200/80 shadow-soft">
+        <div className="bg-[#F8FAFC] p-5 rounded-2xl border border-[#E2E8F0] shadow-soft">
           <div className="flex items-center justify-between text-neutral-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Assigned Devices</span>
             <Server className="w-5 h-5 text-blue-600" />
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-neutral-900">{totalDevicesAssigned}</div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-[#172033]">{totalDevicesAssigned}</div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-neutral-200/80 shadow-soft">
+        <div className="bg-[#F8FAFC] p-5 rounded-2xl border border-[#E2E8F0] shadow-soft">
           <div className="flex items-center justify-between text-neutral-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Client Users</span>
             <Users className="w-5 h-5 text-purple-600" />
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-neutral-900">{totalUsersCount}</div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-[#172033]">{totalUsersCount}</div>
         </div>
       </div>
 
       {/* Directory Filter Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-neutral-200/80 shadow-soft">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-[#F8FAFC] p-4 rounded-2xl border border-[#E2E8F0] shadow-soft">
         <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
@@ -326,7 +316,7 @@ export function ClientsManager() {
       </div>
 
       {/* Directory Table Card */}
-      <div className="bg-white rounded-2xl shadow-soft border border-neutral-200/80 overflow-hidden">
+      <div className="bg-[#F8FAFC] rounded-2xl shadow-soft border border-[#E2E8F0] overflow-hidden">
         {loading ? (
           <div className="p-12 text-center text-neutral-400 font-medium text-sm flex items-center justify-center gap-2">
             <RefreshCw className="w-5 h-5 animate-spin text-primary" />
@@ -421,7 +411,7 @@ export function ClientsManager() {
                             onClick={() => handleViewDetails(t._id)}
                             className="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 font-semibold text-xs rounded-lg transition-colors cursor-pointer"
                           >
-                            View
+                            Manage Client
                           </button>
                           
                           <button
@@ -537,6 +527,7 @@ export function ClientsManager() {
                           value={adminPassword}
                           onChange={(e) => setAdminPassword(e.target.value)}
                           placeholder="••••••••"
+                          autoComplete="new-password"
                           className="w-full pl-4 pr-10 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl text-sm font-medium text-neutral-800 outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/10"
                         />
                         <button
@@ -558,6 +549,7 @@ export function ClientsManager() {
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         placeholder="••••••••"
+                        autoComplete="new-password"
                         className="w-full px-4 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl text-sm font-medium text-neutral-800 outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/10"
                       />
                     </div>
@@ -587,10 +579,10 @@ export function ClientsManager() {
         </div>
       )}
 
-      {/* CLIENT DETAILS MODAL */}
+      {/* CLIENT MANAGEMENT DETAILS MODAL */}
       {selectedTenantDetails && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden border border-neutral-200 max-h-[90vh] flex flex-col">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden border border-neutral-200 max-h-[92vh] flex flex-col">
             <div className="p-6 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-extrabold uppercase">
@@ -603,7 +595,7 @@ export function ClientsManager() {
               </div>
               <button
                 onClick={() => setSelectedTenantDetails(null)}
-                className="text-neutral-400 hover:text-neutral-600 p-1.5 rounded-lg hover:bg-neutral-100"
+                className="text-neutral-400 hover:text-neutral-600 p-1.5 rounded-lg hover:bg-neutral-100 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -644,7 +636,7 @@ export function ClientsManager() {
                 {selectedTenantDetails.devices.length === 0 ? (
                   <p className="text-xs text-neutral-400 italic">No devices assigned to this client yet.</p>
                 ) : (
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                     {selectedTenantDetails.devices.map(d => (
                       <div key={d._id} className="flex items-center justify-between p-3 bg-neutral-50 rounded-xl text-xs font-medium border border-neutral-200/60">
                         <div className="flex items-center gap-3">
@@ -652,14 +644,14 @@ export function ClientsManager() {
                           <span className="text-neutral-500">{d.location || 'No location'}</span>
                           <span className={cn(
                             "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
-                            d.status === 'Online' ? "bg-emerald-100 text-emerald-700" : "bg-neutral-200 text-neutral-600"
+                            d.status === 'ONLINE' || d.status === 'Online' ? "bg-emerald-100 text-emerald-700" : "bg-neutral-200 text-neutral-600"
                           )}>
                             {d.status}
                           </span>
                         </div>
                         <button
                           onClick={() => handleUnassignDeviceFromTenant(selectedTenantDetails.tenant._id, d.deviceId)}
-                          className="text-rose-600 hover:text-rose-800 font-bold text-[11px]"
+                          className="text-rose-600 hover:text-rose-800 font-bold text-[11px] cursor-pointer"
                         >
                           Unassign
                         </button>
@@ -678,7 +670,7 @@ export function ClientsManager() {
                 {selectedTenantDetails.users.length === 0 ? (
                   <p className="text-xs text-neutral-400 italic">No user accounts registered for this client.</p>
                 ) : (
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                     {selectedTenantDetails.users.map(u => (
                       <div key={u._id} className="flex items-center justify-between p-3 bg-neutral-50 rounded-xl text-xs font-medium border border-neutral-200/60">
                         <span className="font-bold text-neutral-900">{u.username}</span>
@@ -699,7 +691,7 @@ export function ClientsManager() {
             <div className="p-4 border-t border-neutral-100 bg-neutral-50 flex justify-end shrink-0">
               <button
                 onClick={() => setSelectedTenantDetails(null)}
-                className="px-5 py-2 bg-neutral-800 hover:bg-neutral-900 text-white font-bold text-xs rounded-xl"
+                className="px-5 py-2 bg-neutral-800 hover:bg-neutral-900 text-white font-bold text-xs rounded-xl cursor-pointer"
               >
                 Close
               </button>

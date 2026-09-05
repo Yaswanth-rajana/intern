@@ -73,7 +73,12 @@ export const loadDevicesIntoCache = async () => {
       if (d.status === 'Online') d.status = 'ONLINE';
       if (d.status === 'Offline') d.status = 'OFFLINE';
       if (d.status === 'Warning') d.status = 'WARNING';
-      if (!d.tenantId) d.status = 'UNASSIGNED';
+      
+      // Default assigned active devices to ONLINE so status appears immediately on login
+      if (d.status !== 'ARCHIVED') {
+        d.status = d.tenantId ? 'ONLINE' : 'UNASSIGNED';
+      }
+      d.mqttConnected = d.status === 'ONLINE';
       devices.set(d.deviceId, d);
     });
     console.log(`✓ Loaded ${dbDevices.length} devices into memory cache`);
@@ -94,6 +99,7 @@ export const registerDeviceInCache = (deviceDoc) => {
     ...deviceDoc,
     history: [],
     status: deviceDoc.tenantId ? 'ONLINE' : 'UNASSIGNED',
+    mqttConnected: !!deviceDoc.tenantId,
     lastSeenAt: deviceDoc.lastSeenAt || new Date(),
     lastTelemetryAt: deviceDoc.lastTelemetryAt || null,
   };
@@ -194,12 +200,16 @@ setInterval(async () => {
   }
 }, 5000);
 
-// Dynamic Device Health & Presence Checker (Directive 3 & 7)
+// Dynamic Device Health & Presence Checker
 setInterval(async () => {
   const now = Date.now();
   const timeoutMs = getOfflineTimeoutMs();
   
   for (const [deviceId, device] of devices.entries()) {
+    // ARCHIVED devices skip status transitions
+    if (device.status === 'ARCHIVED') {
+      continue;
+    }
     // Unassigned devices stay UNASSIGNED
     if (!device.tenantId) {
       if (device.status !== 'UNASSIGNED') {
@@ -212,15 +222,17 @@ setInterval(async () => {
     const lastSeenTime = device.lastSeenAt ? new Date(device.lastSeenAt).getTime() : new Date(device.lastSeen || 0).getTime();
     const age = now - lastSeenTime;
 
+    // Devices connected via MQTT stay ONLINE. Status transitions to OFFLINE immediately when disconnect/LWT is received,
+    // or when heartbeat/presence is lost for an extended period (10+ minutes).
     let targetStatus = 'ONLINE';
-    if (age > timeoutMs) {
+    if (device.mqttConnected === false) {
       targetStatus = 'OFFLINE';
-    } else if (age > timeoutMs * 0.75) {
-      targetStatus = 'WARNING';
+    } else if (lastSeenTime > 0 && age > Math.max(timeoutMs * 5, 10 * 60 * 1000)) {
+      targetStatus = 'OFFLINE';
+      device.mqttConnected = false;
     }
 
     if (device.status !== targetStatus) {
-      const prevStatus = device.status;
       device.status = targetStatus;
       const tenantId = device.tenantId;
 
@@ -230,7 +242,7 @@ setInterval(async () => {
             tenantId,
             deviceId,
             type: 'OFFLINE',
-            message: `Device ${deviceId} is now OFFLINE (No telemetry for ${Math.round(age / 1000)}s)`
+            message: `Device ${deviceId} is now OFFLINE`
           });
 
           try {
@@ -354,6 +366,62 @@ const checkThresholdAlarms = async (deviceId, tenantId, sensors) => {
   }
 };
 
+const handleDeviceConnectionState = async (deviceId, isOnline) => {
+  let device = devices.get(deviceId);
+  if (!device) {
+    const dbDev = await Device.findOne({ deviceId }).lean();
+    if (dbDev) {
+      device = { ...dbDev, history: [] };
+      devices.set(dbDev.deviceId, device);
+    }
+  }
+
+  if (!device || device.status === 'ARCHIVED') return;
+
+  device.mqttConnected = isOnline;
+  const now = new Date();
+  device.lastSeenAt = now;
+  device.lastSeen = getIndianTimestamp();
+
+  const targetStatus = isOnline ? (device.tenantId ? 'ONLINE' : 'UNASSIGNED') : 'OFFLINE';
+  if (device.status !== targetStatus) {
+    device.status = targetStatus;
+    pendingDeviceUpdates.set(device.deviceId, device);
+
+    const tenantId = device.tenantId;
+    if (targetStatus === 'OFFLINE') {
+      try {
+        const alarm = await Alarm.create({
+          tenantId,
+          deviceId: device.deviceId,
+          type: 'OFFLINE',
+          message: `Device ${device.deviceId} is now OFFLINE`
+        });
+        try {
+          const io = getIO();
+          if (tenantId) {
+            io.to(`tenant_admin:${tenantId}`).emit('alarm', alarm);
+            io.to(`tenant:${tenantId}`).emit('alarm', alarm);
+          }
+          io.to(`device:${device.deviceId}`).emit('alarm', alarm);
+          io.to('superadmin_room').emit('alarm', alarm);
+        } catch (e) {}
+      } catch (e) {}
+    }
+
+    try {
+      const io = getIO();
+      if (tenantId) {
+        io.to(`tenant_admin:${tenantId}`).emit('deviceStatusChanged', { deviceId: device.deviceId, status: targetStatus });
+        io.to(`tenant:${tenantId}`).emit('deviceStatusChanged', { deviceId: device.deviceId, status: targetStatus });
+      }
+      io.to(`device:${device.deviceId}`).emit('deviceStatusChanged', { deviceId: device.deviceId, status: targetStatus });
+      io.to('superadmin_room').emit('deviceStatusChanged', { deviceId: device.deviceId, status: targetStatus });
+      broadcastDeviceListUpdated();
+    } catch (e) {}
+  }
+};
+
 export const initMqttService = () => {
   const brokerUrl = `${mqttConfig.protocol}://${mqttConfig.host}:${mqttConfig.port}`;
   
@@ -368,12 +436,17 @@ export const initMqttService = () => {
 
   mqttClient.on('connect', () => {
     console.log('✓ MQTT Connected');
-    mqttClient.subscribe(["iaq/device/#", "iaq/devices/#"], (err, granted) => {
+    const topicsToSubscribe = (process.env.MQTT_TOPIC || 'iaq/device/#,iaq/devices/#,iaq/controller/data')
+      .split(',')
+      .map(t => t.trim())
+      .filter(Boolean);
+
+    mqttClient.subscribe(topicsToSubscribe, { qos: 0 }, (err, granted) => {
       if (err) {
-        console.error("Subscription error:", err);
+        console.warn("[MQTT Warning] Subscription error:", err.message || err);
         return;
       }
-      console.log("Granted:", granted);
+      console.log("✓ Subscribed MQTT Topics:", granted?.map(g => `${g.topic} (QoS ${g.qos})`).join(', ') || topicsToSubscribe.join(', '));
     });
   });
 
@@ -399,64 +472,113 @@ export const initMqttService = () => {
     console.log(`Timestamp: ${getIndianTimestamp()}`);
 
     try {
-      // 1. Extract deviceId from MQTT topic: iaq/device/<deviceId>
-      const topicParts = topic.split('/');
-      const topicDeviceId = topicParts[topicParts.length - 1];
+      const now = new Date();
+      const nowStr = getIndianTimestamp();
+      const msgStr = message.toString().trim();
 
-      // 2. Parse JSON Payload
+      // 1. Handle EMQX Client Connection Presence topics ($SYS/brokers/+/clients/+/connected & disconnected)
+      if (topic.includes('$SYS/') && topic.includes('/clients/')) {
+        const isConnected = topic.endsWith('/connected');
+        let sysPayload = {};
+        try { sysPayload = JSON.parse(msgStr); } catch (e) {}
+        const targetClientId = sysPayload.clientid || sysPayload.username;
+        if (targetClientId) {
+          const normId = targetClientId.startsWith('IAQ-') ? targetClientId : `IAQ-${targetClientId}`;
+          const dev = devices.get(targetClientId) || devices.get(normId);
+          if (dev) {
+            await handleDeviceConnectionState(dev.deviceId, isConnected);
+          }
+        }
+        return;
+      }
+
+      // 2. Parse payload
       let payload;
       try {
-        payload = JSON.parse(message.toString());
+        payload = JSON.parse(msgStr);
       } catch (e) {
-        console.warn(`[MQTT Warning] Malformed JSON received on topic ${topic}, ignoring packet.`);
+        payload = { rawText: msgStr };
+      }
+
+      // 3. Handle explicit MQTT LWT & Status/Presence topics (e.g. iaq/device/<id>/status, iaq/device/<id>/lwt)
+      const topicParts = topic.split('/');
+      const topicLastPart = topicParts[topicParts.length - 1].toLowerCase();
+      const isStatusTopic = ['status', 'lwt', 'state', 'presence', 'online', 'offline'].includes(topicLastPart);
+      const isStatusPayload = payload.status !== undefined || payload.state !== undefined || payload.connected !== undefined || payload.rawText !== undefined;
+      const isTelemetry = payload.sensors && typeof payload.sensors === 'object';
+
+      if ((isStatusTopic || isStatusPayload) && !isTelemetry) {
+        const statusVal = String(payload.status || payload.state || payload.connected || payload.rawText || '').toLowerCase();
+        const isOffline = statusVal.includes('off') || statusVal.includes('disconnect') || statusVal === 'false';
+        
+        let devId = payload.deviceId || payload.id;
+        if (!devId && topicParts.length > 1) {
+          devId = topicParts[topicParts.length - 2];
+        }
+
+        if (devId) {
+          const normId = devId.startsWith('IAQ-') ? devId : `IAQ-${devId}`;
+          const dev = devices.get(devId) || devices.get(normId);
+          if (dev) {
+            await handleDeviceConnectionState(dev.deviceId, !isOffline);
+          }
+        }
         return;
       }
 
-      // 3. Validate payload.deviceId
+      // 4. Validate payload's top-level deviceId for telemetry
       const payloadDeviceId = payload.deviceId || payload.id;
       if (!payloadDeviceId) {
-        console.warn(`[MQTT Warning] Payload on ${topic} missing deviceId, ignoring packet.`);
+        console.warn(`[MQTT Warning] Telemetry payload on ${topic} missing deviceId, ignoring packet.`);
         return;
       }
 
-      // 4. Compare Topic ID === Payload ID (Directive 5)
-      // Normalize comparison to allow matching if one has the prefix (e.g., "0001" and "IAQ-0001")
-      const normTopicId = topicDeviceId.startsWith('IAQ-') ? topicDeviceId : `IAQ-${topicDeviceId}`;
-      const normPayloadId = payloadDeviceId.startsWith('IAQ-') ? payloadDeviceId : `IAQ-${payloadDeviceId}`;
+      // Extract deviceId from MQTT topic for dynamic topic patterns (iaq/device/<deviceId>)
+      const topicDeviceId = topicParts[topicParts.length - 1];
 
-      if (topicDeviceId !== payloadDeviceId && normTopicId !== normPayloadId) {
-        console.warn(`[MQTT Security Alert] Topic deviceId "${topicDeviceId}" !== Payload deviceId "${payloadDeviceId}". Mismatch rejected.`);
-        return;
-      }
+      // Topic vs Payload Device ID Validation
+      const isFixedTopic = (topic === 'iaq/controller/data');
 
-      // Use the canonical device ID with the correct prefix (preferring the one starting with 'IAQ-' or 'DEMO-')
-      const deviceId = payloadDeviceId.startsWith('IAQ-') || payloadDeviceId.startsWith('DEMO-') 
-        ? payloadDeviceId 
-        : normPayloadId;
+      if (!isFixedTopic && topicParts.length > 2) {
+        const normTopicId = topicDeviceId.startsWith('IAQ-') ? topicDeviceId : `IAQ-${topicDeviceId}`;
+        const normPayloadId = payloadDeviceId.startsWith('IAQ-') ? payloadDeviceId : `IAQ-${payloadDeviceId}`;
 
-      // 5. Look up Device in MongoDB/cache (Directive 5)
-      let device = devices.get(deviceId);
-      if (!device) {
-        const dbDev = await Device.findOne({ deviceId }).lean();
-        if (dbDev) {
-          device = { ...dbDev, history: [] };
-          devices.set(deviceId, device);
+        if (topicDeviceId !== payloadDeviceId && normTopicId !== normPayloadId) {
+          console.warn(`[MQTT Security Alert] Topic deviceId "${topicDeviceId}" !== Payload deviceId "${payloadDeviceId}". Mismatch rejected.`);
+          return;
         }
       }
 
-      // 6. Unknown device handling (Directive 5): Do NOT auto-create device or tenant
+      // Use the payload's top-level deviceId to identify the device
+      const normPayloadId = payloadDeviceId.startsWith('IAQ-') ? payloadDeviceId : `IAQ-${payloadDeviceId}`;
+      const deviceId = (payloadDeviceId.startsWith('IAQ-') || payloadDeviceId.startsWith('DEMO-') || payloadDeviceId.includes('-'))
+        ? payloadDeviceId 
+        : normPayloadId;
+
+      console.log(`[MQTT Debug] Topic: "${topic}" | Extracted deviceId: "${deviceId}"`);
+
+      // Look up Device in MongoDB/cache
+      let device = devices.get(deviceId) || devices.get(payloadDeviceId);
       if (!device) {
-        console.warn(`[MQTT Security Warning] Unknown/Unregistered device attempted telemetry: ${deviceId}. Packet rejected.`);
+        const dbDev = await Device.findOne({
+          $or: [{ deviceId: deviceId }, { deviceId: payloadDeviceId }]
+        }).lean();
+        if (dbDev) {
+          device = { ...dbDev, history: [] };
+          devices.set(dbDev.deviceId, device);
+        }
+      }
+
+      if (!device) {
+        console.warn(`[MQTT Security Warning] Unknown/Unregistered device attempted telemetry: ${deviceId} (payloadId: ${payloadDeviceId}). Packet rejected.`);
         return;
       }
 
-      // 7. Validate sensor numeric values and physical ranges (Directive 5 & 12)
       if (!validateSensors(payload.sensors)) {
         console.warn(`[MQTT Warning] Invalid sensor values or types received from ${deviceId}, ignoring packet.`);
         return;
       }
 
-      // 8. Get TRUSTED tenantId from MongoDB Device (Directive 6 - Ignore payload.tenantId)
       const trustedTenantId = device.tenantId ? String(device.tenantId) : null;
 
       messagesThisSecond++;
@@ -465,10 +587,8 @@ export const initMqttService = () => {
         stats.firstPacketTime = getIndianTimestamp();
       }
 
-      const now = new Date();
-      const nowStr = getIndianTimestamp();
-
       // Update timestamp fields
+      device.mqttConnected = true;
       device.lastSeen = nowStr;
       device.lastSeenAt = now;
       device.lastTelemetryAt = now;
@@ -476,10 +596,12 @@ export const initMqttService = () => {
       device.packetsToday = (device.packetsToday || 0) + 1;
 
       const prevStatus = device.status;
-      if (device.tenantId) {
-        device.status = 'ONLINE';
-      } else {
-        device.status = 'UNASSIGNED';
+      if (device.status !== 'ARCHIVED') {
+        if (device.tenantId) {
+          device.status = 'ONLINE';
+        } else {
+          device.status = 'UNASSIGNED';
+        }
       }
 
       device.latestPayload = payload;
@@ -602,16 +724,38 @@ export const getDeviceList = async (user = null, filters = {}) => {
 
   if (user) {
     if (user.role === 'SUPER_ADMIN') {
-      if (filters.tenantId) {
-        allDevices = allDevices.filter(d => d.tenantId && String(d.tenantId) === String(filters.tenantId));
+      const statusFilterUpper = filters.status ? filters.status.toUpperCase() : null;
+
+      if (statusFilterUpper === 'ARCHIVED') {
+        allDevices = allDevices.filter(d => d.status === 'ARCHIVED');
+      } else if (statusFilterUpper === 'ALL') {
+        // Return all devices including active and archived
+      } else {
+        // Default active view: exclude ARCHIVED devices
+        allDevices = allDevices.filter(d => d.status !== 'ARCHIVED');
+
+        if (filters.tenantId) {
+          allDevices = allDevices.filter(d => d.tenantId && String(d.tenantId) === String(filters.tenantId));
+        }
+        if (filters.assigned !== undefined) {
+          const isAssigned = filters.assigned === 'true' || filters.assigned === true;
+          allDevices = allDevices.filter(d => isAssigned ? !!d.tenantId : !d.tenantId);
+        }
+        if (statusFilterUpper && statusFilterUpper !== 'ACTIVE') {
+          allDevices = allDevices.filter(d => d.status?.toUpperCase() === statusFilterUpper);
+        }
       }
-      if (filters.assigned !== undefined) {
-        const isAssigned = filters.assigned === 'true' || filters.assigned === true;
-        allDevices = allDevices.filter(d => isAssigned ? !!d.tenantId : !d.tenantId);
+
+      if (filters.buildingId) {
+        allDevices = allDevices.filter(d => d.buildingId && String(d.buildingId) === String(filters.buildingId));
       }
-      if (filters.status) {
-        allDevices = allDevices.filter(d => d.status?.toUpperCase() === filters.status.toUpperCase());
+      if (filters.floorId) {
+        allDevices = allDevices.filter(d => d.floorId && String(d.floorId) === String(filters.floorId));
       }
+      if (filters.roomId) {
+        allDevices = allDevices.filter(d => d.roomId && String(d.roomId) === String(filters.roomId));
+      }
+
       if (filters.search) {
         const searchLower = filters.search.toLowerCase();
         allDevices = allDevices.filter(d => 
@@ -621,7 +765,7 @@ export const getDeviceList = async (user = null, filters = {}) => {
         );
       }
     } else if (user.role === 'CLIENT_ADMIN') {
-      allDevices = allDevices.filter(d => d.tenantId && String(d.tenantId) === String(user.tenantId));
+      allDevices = allDevices.filter(d => d.tenantId && String(d.tenantId) === String(user.tenantId) && d.status !== 'ARCHIVED');
     } else if (user.role === 'VIEWER') {
       const viewerId = user.userId || user.id;
       let allowedDeviceIds = [];
@@ -631,7 +775,8 @@ export const getDeviceList = async (user = null, filters = {}) => {
       allDevices = allDevices.filter(d => 
         d.tenantId && 
         String(d.tenantId) === String(user.tenantId) && 
-        allowedDeviceIds.includes(d.deviceId)
+        allowedDeviceIds.includes(d.deviceId) &&
+        d.status !== 'ARCHIVED'
       );
     } else {
       allDevices = [];
@@ -647,25 +792,27 @@ export const getDeviceList = async (user = null, filters = {}) => {
     });
   }
 
-  const list = allDevices.map(d => ({
-    deviceId: d.deviceId,
-    name: d.name || d.deviceId,
-    tenantId: d.tenantId || null,
-    tenant: d.tenantId && tenantMap[d.tenantId.toString()] ? tenantMap[d.tenantId.toString()] : null,
-    status: d.status || (d.tenantId ? 'ONLINE' : 'UNASSIGNED'),
-    lastSeen: d.lastSeen,
-    lastSeenAt: d.lastSeenAt,
-    lastTelemetryAt: d.lastTelemetryAt,
-    registeredAt: d.registeredAt,
-    firmwareVersion: d.firmwareVersion,
-    hardwareVersion: d.hardwareVersion,
-    messageCount: d.messageCount,
-    latestAQI: d.latestAQI,
-    latestCO2: d.latestCO2,
-    latestTemperature: d.latestTemperature,
-    latestHumidity: d.latestHumidity,
-    location: d.location
-  }));
+  const list = allDevices.map(d => {
+    return {
+      deviceId: d.deviceId,
+      name: d.name || d.deviceId,
+      tenantId: d.tenantId || null,
+      tenant: d.tenantId && tenantMap[d.tenantId.toString()] ? tenantMap[d.tenantId.toString()] : null,
+      status: d.status || (d.tenantId ? 'ONLINE' : 'UNASSIGNED'),
+      lastSeen: d.lastSeen,
+      lastSeenAt: d.lastSeenAt,
+      lastTelemetryAt: d.lastTelemetryAt,
+      registeredAt: d.registeredAt,
+      firmwareVersion: d.firmwareVersion,
+      hardwareVersion: d.hardwareVersion,
+      messageCount: d.messageCount,
+      latestAQI: d.latestAQI,
+      latestCO2: d.latestCO2,
+      latestTemperature: d.latestTemperature,
+      latestHumidity: d.latestHumidity,
+      location: d.location || 'Unallocated'
+    };
+  });
 
   const statusOrder = { 'ONLINE': 0, 'WARNING': 1, 'OFFLINE': 2, 'UNASSIGNED': 3 };
   list.sort((a, b) => {
@@ -678,10 +825,50 @@ export const getDeviceList = async (user = null, filters = {}) => {
   return list;
 };
 
-export const getLatestPayload = (deviceId) => {
+export const getLatestPayload = async (deviceId) => {
   if (!deviceId) return null;
   const device = devices.get(deviceId);
-  return device ? device.latestPayload : null;
+  if (device && device.latestPayload && device.latestPayload.sensors && Object.keys(device.latestPayload.sensors).length > 0) {
+    return device.latestPayload;
+  }
+
+  try {
+    const latestDoc = await SensorReading.findOne({ deviceId }).sort({ timestamp: -1 }).lean();
+    if (latestDoc) {
+      if (latestDoc.rawPayload && latestDoc.rawPayload.sensors) {
+        return latestDoc.rawPayload;
+      }
+      return {
+        deviceId: latestDoc.deviceId,
+        timestamp: latestDoc.timestamp ? new Date(latestDoc.timestamp).toISOString() : new Date().toISOString(),
+        sensors: {
+          AQI: latestDoc.AQI,
+          CO2: latestDoc.CO2,
+          Temperature: latestDoc.Temperature,
+          Humidity: latestDoc.Humidity,
+          VOC: latestDoc.VOC,
+          NOX: latestDoc.NOX,
+          PM1_0: latestDoc.PM1_0,
+          PM2_5: latestDoc.PM2_5,
+          PM4_0: latestDoc.PM4_0,
+          PM10: latestDoc.PM10
+        }
+      };
+    }
+
+    if (device && device.latestPayload && Object.keys(device.latestPayload).length > 0) {
+      return device.latestPayload;
+    }
+
+    const dbDev = await Device.findOne({ deviceId }).lean();
+    if (dbDev && dbDev.latestPayload && dbDev.latestPayload.sensors) {
+      return dbDev.latestPayload;
+    }
+  } catch (err) {
+    console.error(`[MQTT Service] Error fetching fallback latest payload for ${deviceId}:`, err.message);
+  }
+
+  return null;
 };
 
 const downsample = (data, bucketSizeMs) => {
@@ -820,16 +1007,26 @@ export const getHistory = async (deviceId, page = 1, limit = 100, user = null, r
 };
 
 export const getDevicesStats = () => {
-  let online = 0, offline = 0, unassigned = 0;
+  let active = 0, archived = 0, online = 0, offline = 0, assigned = 0, unassigned = 0;
   devices.forEach(d => {
-    if (d.status === 'OFFLINE') offline++;
-    else if (d.status === 'UNASSIGNED' || !d.tenantId) unassigned++;
-    else online++;
+    if (d.status === 'ARCHIVED') {
+      archived++;
+    } else {
+      active++;
+      if (d.status === 'ONLINE') online++;
+      else if (d.status === 'OFFLINE' || d.status === 'WARNING') offline++;
+
+      if (d.tenantId) assigned++;
+      else unassigned++;
+    }
   });
   return {
     totalDevices: devices.size,
+    activeDevices: active,
+    archivedDevices: archived,
     onlineDevices: online,
     offlineDevices: offline,
+    assignedDevices: assigned,
     unassignedDevices: unassigned
   };
 };
@@ -871,15 +1068,15 @@ export const broadcastDeviceListUpdated = async () => {
 
 export const updateDeviceLocation = async (deviceId, location, name = null) => {
   const updateDoc = {};
-  if (location !== null && location !== undefined) updateDoc.location = location;
   if (name !== null && name !== undefined) updateDoc.name = name;
+  if (location !== undefined && location !== null) updateDoc.location = location;
 
   await Device.updateOne({ deviceId }, updateDoc);
 
   const cachedDevice = devices.get(deviceId);
   if (cachedDevice) {
-    if (location !== null && location !== undefined) cachedDevice.location = location;
     if (name !== null && name !== undefined) cachedDevice.name = name;
+    if (location !== undefined && location !== null) cachedDevice.location = location;
   }
 
   await broadcastDeviceListUpdated();
@@ -887,8 +1084,11 @@ export const updateDeviceLocation = async (deviceId, location, name = null) => {
 
 export const updateDeviceTenant = async (deviceId, tenantId, location = null) => {
   const newStatus = tenantId ? 'ONLINE' : 'UNASSIGNED';
-  const updatePayload = { tenantId, status: newStatus };
-  if (location) updatePayload.location = location;
+  const updatePayload = { 
+    tenantId, 
+    status: newStatus,
+    location: tenantId ? (location || 'Unallocated') : 'Unallocated'
+  };
 
   await Device.updateOne({ deviceId }, updatePayload);
 
@@ -896,22 +1096,101 @@ export const updateDeviceTenant = async (deviceId, tenantId, location = null) =>
   if (cachedDevice) {
     cachedDevice.tenantId = tenantId;
     cachedDevice.status = newStatus;
-    if (location) cachedDevice.location = location;
+    cachedDevice.location = updatePayload.location;
   }
 
   await broadcastDeviceListUpdated();
 };
 
 export const unassignDeviceTenant = async (deviceId) => {
-  await Device.updateOne({ deviceId }, { tenantId: null, status: 'UNASSIGNED' });
+  await Device.updateOne(
+    { deviceId }, 
+    { tenantId: null, status: 'UNASSIGNED', location: 'Unallocated' }
+  );
 
   const cachedDevice = devices.get(deviceId);
   if (cachedDevice) {
     cachedDevice.tenantId = null;
     cachedDevice.status = 'UNASSIGNED';
+    cachedDevice.location = 'Unallocated';
   }
 
   await broadcastDeviceListUpdated();
+};
+
+export const bulkUnassignDevicesService = async (deviceIds) => {
+  let unassignedCount = 0;
+  let alreadyUnassignedCount = 0;
+
+  for (const id of deviceIds) {
+    const dev = devices.get(id);
+    if (!dev) continue;
+    if (dev.tenantId === null && dev.status === 'UNASSIGNED') {
+      alreadyUnassignedCount++;
+    } else {
+      unassignedCount++;
+    }
+  }
+
+  await Device.updateMany(
+    { deviceId: { $in: deviceIds } },
+    { tenantId: null, status: 'UNASSIGNED', location: 'Unallocated' }
+  );
+
+  deviceIds.forEach(id => {
+    const cached = devices.get(id);
+    if (cached) {
+      cached.tenantId = null;
+      cached.status = 'UNASSIGNED';
+      cached.location = 'Unallocated';
+    }
+  });
+
+  await broadcastDeviceListUpdated();
+  return { unassignedCount, alreadyUnassignedCount };
+};
+
+export const bulkArchiveDevicesService = async (deviceIds) => {
+  await Device.updateMany(
+    { deviceId: { $in: deviceIds } },
+    { status: 'ARCHIVED', tenantId: null }
+  );
+
+  deviceIds.forEach(id => {
+    const cached = devices.get(id);
+    if (cached) {
+      cached.status = 'ARCHIVED';
+      cached.tenantId = null;
+    }
+  });
+
+  await broadcastDeviceListUpdated();
+  return { archivedCount: deviceIds.length };
+};
+
+export const bulkAssignDevicesService = async (deviceIds, tenantId, location = null) => {
+  for (const id of deviceIds) {
+    await updateDeviceTenant(id, tenantId, location);
+  }
+  return { assignedCount: deviceIds.length };
+};
+
+export const bulkRestoreDevicesService = async (deviceIds) => {
+  await Device.updateMany(
+    { deviceId: { $in: deviceIds } },
+    { status: 'UNASSIGNED', tenantId: null }
+  );
+
+  deviceIds.forEach(id => {
+    const cached = devices.get(id);
+    if (cached) {
+      cached.status = 'UNASSIGNED';
+      cached.tenantId = null;
+    }
+  });
+
+  await broadcastDeviceListUpdated();
+  return { restoredCount: deviceIds.length };
 };
 
 export const flushPendingTelemetry = async () => {

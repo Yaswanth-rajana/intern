@@ -12,15 +12,15 @@ export function ConnectionStatus() {
   ];
 
   return (
-    <footer className="mt-4 pt-3 pb-3 flex items-center justify-center border-t border-neutral-200">
-      <div className="flex flex-wrap items-center gap-8">
+    <footer className="mt-8 pt-4 pb-3 border-t border-neutral-200/80 flex items-center justify-center shrink-0 select-none">
+      <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-10">
         {statuses.map((item) => (
           <div key={item.label} className="flex items-center gap-2">
             <item.icon className="w-4 h-4 text-neutral-400" />
-            <span className="text-sm text-neutral-500 font-medium">{item.label}:</span>
-            <div className="flex items-center gap-1.5 ml-1">
-               <span className={`w-2 h-2 rounded-full ${item.isOk ? 'bg-success' : 'bg-danger animate-pulse'}`} />
-               <span className="text-sm font-semibold text-neutral-700">{item.status}</span>
+            <span className="text-xs font-semibold text-neutral-500">{item.label}:</span>
+            <div className="flex items-center gap-1.5">
+              <span className={`w-2 h-2 rounded-full ${item.isOk ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'}`} />
+              <span className="text-xs font-bold text-neutral-800">{item.status}</span>
             </div>
           </div>
         ))}

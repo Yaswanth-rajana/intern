@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Heart, CheckCircle2, AlertCircle } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useDashboardStore } from '../../store/dashboardStore';
@@ -13,27 +13,13 @@ const formatSensorVal = (val) => {
 
 export function SensorHealth({ className }) {
   const device = useDashboardStore(state => state.device);
+  const deviceList = useDashboardStore(state => state.deviceList);
+  const selectedDeviceId = useDashboardStore(state => state.selectedDeviceId);
   const sensors = useDashboardStore(state => state.sensors.latest);
-  const [sensorHealth, setSensorHealth] = useState('Offline');
 
-  useEffect(() => {
-    const tick = () => {
-      const lastPacketTime = useDashboardStore.getState().device.lastPacketTime;
-      if (!lastPacketTime) {
-        setSensorHealth('Offline');
-        return;
-      }
-      const { avgPacketInterval } = useDashboardStore.getState().stats;
-      const baseInterval = avgPacketInterval > 0 ? avgPacketInterval : 15000;
-      setSensorHealth((Date.now() - lastPacketTime) < baseInterval * 3 ? 'Online' : 'Offline');
-    };
-
-    tick();
-    const interval = setInterval(tick, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const isOnline = sensorHealth === 'Online';
+  const selectedDeviceObj = deviceList.find(d => d.deviceId === selectedDeviceId) || device.info || {};
+  const currentDevStatus = (selectedDeviceObj.status || device.info.status || 'ONLINE').toUpperCase();
+  const isOnline = currentDevStatus === 'ONLINE' || currentDevStatus === 'WARNING';
 
   const aqiVal = formatSensorVal(sensors.AQI);
   const co2Val = formatSensorVal(sensors.CO2);
@@ -68,45 +54,44 @@ export function SensorHealth({ className }) {
   ];
 
   return (
-    <div className={cn("bg-white rounded-[16px] shadow-soft p-[24px] h-full flex flex-col justify-between", className)}>
+    <div className={cn("card-level-1 p-5 sm:p-6", className)}>
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-2.5">
-          <Heart className="w-5 h-5 text-neutral-800" />
-          <h2 className="text-[16px] font-bold text-neutral-800">Sensor Health</h2>
+          <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center border border-blue-100">
+            <Heart className="w-4.5 h-4.5 text-blue-600" />
+          </div>
+          <h2 className="text-[16px] font-extrabold text-slate-800">Sensor Diagnostic Health</h2>
         </div>
-        <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">
-          Hardware Status
+        <span className="micro-label">
+          Hardware Channels
         </span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1">
-        {sensorGroups.map((group, idx) => {
-          const online = group.status === 'ONLINE';
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        {sensorGroups.map((group) => {
+          const isGroupOnline = group.status === 'ONLINE';
           return (
-            <div
-              key={idx}
-              className="flex flex-col justify-between p-3 rounded-xl border border-neutral-100 bg-neutral-50/70 hover:bg-neutral-50 transition-colors"
+            <div 
+              key={group.key}
+              className="p-4 rounded-xl border border-slate-200/70 bg-white shadow-2xs flex flex-col justify-between"
             >
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[13px] font-bold text-neutral-700">{group.label}</span>
-                <span
-                  className={cn(
-                    "text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md border",
-                    online
-                      ? "bg-emerald-50 text-emerald-700 border-emerald-200/80"
-                      : "bg-rose-50 text-rose-700 border-rose-200/80"
-                  )}
-                >
-                  {group.status}
+              <div className="flex items-center justify-between mb-2">
+                <span className="micro-label">
+                  {group.label}
                 </span>
-              </div>
-              <div className="flex items-center gap-1.5 text-xs text-neutral-500 font-medium">
-                {online ? (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                {isGroupOnline ? (
+                  <span className="flex items-center gap-1 text-[11px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Normal
+                  </span>
                 ) : (
-                  <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                  <span className="flex items-center gap-1 text-[11px] font-extrabold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200/60">
+                    <AlertCircle className="w-3 h-3 text-rose-600" /> Offline
+                  </span>
                 )}
-                <span className="truncate">{group.metric}</span>
+              </div>
+              
+              <div className="text-[14px] font-extrabold text-slate-800 tracking-tight font-tabular-nums">
+                {group.metric}
               </div>
             </div>
           );
@@ -115,3 +100,4 @@ export function SensorHealth({ className }) {
     </div>
   );
 }
+

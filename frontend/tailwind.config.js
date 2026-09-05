@@ -18,17 +18,19 @@ export default {
           dark: '#475569',
         },
         neutral: {
-          50: '#fcfcfc', // Extremely light gray / almost white
-          100: '#f4f4f5',
-          200: '#e4e4e7',
-          300: '#d4d4d8',
-          400: '#a1a1aa',
-          500: '#71717a',
-          600: '#52525b',
-          700: '#3f3f46',
-          800: '#27272a',
-          900: '#18181b',
+          50: '#F3F5F8', // Page background: #F3F5F8
+          100: '#F8FAFC', // Card background: #F8FAFC
+          200: '#E2E8F0', // Border: #E2E8F0
+          300: '#CBD5E1',
+          400: '#94A3B8',
+          500: '#64748B',
+          600: '#475569',
+          700: '#334155',
+          800: '#1E293B',
+          900: '#172033', // Text: #172033
         },
+        page: '#F3F5F8',
+        card: '#F8FAFC',
         danger: {
           DEFAULT: '#ef4444',
           light: '#f87171',

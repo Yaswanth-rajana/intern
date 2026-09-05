@@ -107,7 +107,7 @@ export function AlarmsLog() {
       {/* Page header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-extrabold text-neutral-900 flex items-center gap-3">
+          <h1 className="text-2xl font-extrabold text-[#172033] flex items-center gap-3">
             <BellRing className="w-7 h-7 text-primary" />
             Alerts Log
           </h1>
@@ -115,7 +115,7 @@ export function AlarmsLog() {
             Complete history of all sensor alerts — filter by severity or sensor parameter.
           </p>
         </div>
-        <div className="flex items-center gap-2 text-[12px] font-bold text-neutral-500 bg-white border border-neutral-200 rounded-xl px-4 py-2 shadow-sm">
+        <div className="flex items-center gap-2 text-[12px] font-bold text-neutral-500 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-2 shadow-sm">
           <span className="text-rose-600">{criticalCount} Critical</span>
           <span className="text-neutral-300">|</span>
           <span className="text-amber-600">{warningCount} Warning</span>
@@ -125,7 +125,7 @@ export function AlarmsLog() {
       </div>
 
       {/* Filter bar */}
-      <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm p-4">
+      <div className="bg-[#F8FAFC] rounded-2xl border border-[#E2E8F0] shadow-sm p-4">
         <div className="flex flex-col sm:flex-row gap-3">
           {/* Search */}
           <div className="relative flex-1">
@@ -199,7 +199,7 @@ export function AlarmsLog() {
       </div>
 
       {/* Results */}
-      <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
+      <div className="bg-[#F8FAFC] rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden">
         <div className="px-6 py-3.5 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50">
           <span className="text-[13px] font-bold text-neutral-600">
             {filtered.length} {filtered.length === 1 ? 'alert' : 'alerts'} found

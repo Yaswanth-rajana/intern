@@ -48,14 +48,21 @@ export const registerDevice = async (data) => {
   return response.data;
 };
 
-export const updateDeviceLocation = async (deviceId, location) => {
-  const response = await apiClient.patch(`/devices/${deviceId}`, { location });
+export const updateDeviceLocation = async (deviceId, location, buildingId = null, floorId = null, roomId = null) => {
+  const response = await apiClient.patch(`/devices/${deviceId}`, { location, buildingId, floorId, roomId });
   return response.data;
 };
 
 export const fetchDeviceLatest = async (deviceId) => {
-  const response = await apiClient.get(`/devices/${deviceId}/latest`);
-  return response.data;
+  try {
+    const response = await apiClient.get(`/devices/${deviceId}/latest`);
+    return response.data;
+  } catch (error) {
+    if (error.response && error.response.status === 404) {
+      return null;
+    }
+    throw error;
+  }
 };
 
 export const fetchDeviceHistory = async (deviceId, range) => {
@@ -144,6 +151,32 @@ export const unassignDevice = async (tenantId, deviceId) => {
   return response.data;
 };
 
+// SuperAdmin Bulk Device Operations
+export const bulkUnassignDevices = async (deviceIds) => {
+  const response = await apiClient.post('/api/superadmin/devices/bulk-unassign', { deviceIds });
+  return response.data;
+};
+
+export const bulkArchiveDevices = async (deviceIds) => {
+  const response = await apiClient.post('/api/superadmin/devices/bulk-archive', { deviceIds });
+  return response.data;
+};
+
+export const bulkAssignDevices = async (tenantId, deviceIds, location = null, buildingId = null, floorId = null, roomId = null) => {
+  const response = await apiClient.post('/api/superadmin/devices/bulk-assign', { tenantId, deviceIds, location, buildingId, floorId, roomId });
+  return response.data;
+};
+
+export const bulkRestoreDevices = async (deviceIds) => {
+  const response = await apiClient.post('/api/superadmin/devices/bulk-restore', { deviceIds });
+  return response.data;
+};
+
+export const restoreDevice = async (deviceId) => {
+  const response = await apiClient.post(`/api/superadmin/devices/${deviceId}/restore`);
+  return response.data;
+};
+
 export const fetchAuditLogs = async (params = {}) => {
   const response = await apiClient.get('/audit-logs', { params });
   return response.data;
@@ -168,17 +201,8 @@ export const exportReadingsCSV = async (params = {}) => {
   return response.data;
 };
 
-// SuperAdmin Daily Device Activity Reports API
-export const fetchDeviceActivityReport = async (params = {}) => {
-  const response = await apiClient.get('/api/superadmin/device-activity', { params });
-  return response.data;
-};
 
-export const downloadDeviceActivityReport = async (params = {}) => {
-  const response = await apiClient.get('/api/superadmin/device-activity/export/csv', {
-    params,
-    responseType: 'blob'
-  });
-  return response.data;
-};
+
+
+
 

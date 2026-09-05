@@ -2,6 +2,7 @@ import express from 'express';
 import { parse } from 'json2csv';
 import SensorReading from '../models/SensorReading.js';
 import ViewerDeviceAccess from '../models/ViewerDeviceAccess.js';
+import Device from '../models/Device.js';
 import { authenticateJWT, applyTenantFilter } from '../middleware/auth.js';
 import { verifyDeviceTenantAccess } from '../services/mqttService.js';
 
@@ -14,26 +15,41 @@ router.use(authenticateJWT);
 router.get('/', async (req, res) => {
   try {
     let query = applyTenantFilter(req);
-    const { deviceId, startDate, endDate } = req.query;
+    const { deviceId, startDate, endDate, buildingId, floorId, roomId } = req.query;
+
+    // Hierarchy filtering helper
+    let hierarchyDeviceIds = null;
+    if (buildingId || floorId || roomId) {
+      const devFilter = {};
+      if (buildingId) devFilter.buildingId = buildingId;
+      if (floorId) devFilter.floorId = floorId;
+      if (roomId) devFilter.roomId = roomId;
+      hierarchyDeviceIds = await Device.find(devFilter).distinct('deviceId');
+    }
 
     // Viewer device authorization enforcement
     if (req.user.role === 'VIEWER') {
       const viewerId = req.user.userId || req.user.id;
       const assigned = await ViewerDeviceAccess.find({ viewerId }).distinct('deviceId');
       
+      let effectiveAllowed = assigned;
+      if (hierarchyDeviceIds !== null) {
+        effectiveAllowed = assigned.filter(id => hierarchyDeviceIds.includes(id));
+      }
+
       if (deviceId) {
-        if (!assigned.includes(deviceId)) {
+        if (!effectiveAllowed.includes(deviceId)) {
           return res.status(403).json({ error: 'Access denied: You do not have permissions for this device' });
         }
         query.deviceId = deviceId;
       } else {
-        if (assigned.length === 0) {
+        if (effectiveAllowed.length === 0) {
           return res.json({
             data: [],
             pagination: { page: 1, limit: 50, total: 0, totalPages: 0 }
           });
         }
-        query.deviceId = { $in: assigned };
+        query.deviceId = { $in: effectiveAllowed };
       }
     } else {
       // 1. Device scope & authorization validation for ADMINs
@@ -42,7 +58,15 @@ router.get('/', async (req, res) => {
         if (!hasAccess) {
           return res.status(403).json({ error: 'Access denied: You do not have permissions for this device' });
         }
+        if (hierarchyDeviceIds !== null && !hierarchyDeviceIds.includes(deviceId)) {
+          return res.json({
+            data: [],
+            pagination: { page: 1, limit: 50, total: 0, totalPages: 0 }
+          });
+        }
         query.deviceId = deviceId;
+      } else if (hierarchyDeviceIds !== null) {
+        query.deviceId = { $in: hierarchyDeviceIds };
       }
     }
 

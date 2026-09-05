@@ -1,62 +1,28 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { cn } from '../../utils/cn';
 import { useDashboardStore } from '../../store/dashboardStore';
 
 export function SystemStatus() {
   const system = useDashboardStore(state => state.system);
   const device = useDashboardStore(state => state.device);
+  const deviceList = useDashboardStore(state => state.deviceList);
+  const selectedDeviceId = useDashboardStore(state => state.selectedDeviceId);
 
-  const [devStatus, setDevStatus] = useState('Offline');
-  const [signalQuality, setSignalQuality] = useState('Poor');
+  const selectedDeviceObj = deviceList.find(d => d.deviceId === selectedDeviceId) || device.info || {};
+  const currentDevStatus = (selectedDeviceObj.status || device.info.status || 'ONLINE').toUpperCase();
 
-  useEffect(() => {
-    const tick = () => {
-      const lastPacketTime = useDashboardStore.getState().device.lastPacketTime;
+  const isOnline = currentDevStatus === 'ONLINE';
+  const isWarning = currentDevStatus === 'WARNING';
 
-      if (!lastPacketTime) {
-        setDevStatus('Offline');
-        setSignalQuality('None');
-        return;
-      }
-      const age = Date.now() - lastPacketTime;
-
-      // Use the device's own measured avg packet interval as the baseline.
-      // Falls back to 15 000 ms if we haven't collected enough data yet.
-      const { avgPacketInterval } = useDashboardStore.getState().stats;
-      const baseInterval = avgPacketInterval > 0 ? avgPacketInterval : 15000;
-
-      // Online  → within 2.5× the device's own interval
-      // Warning → within 5×  (packet is late but device may not be dead)
-      // Offline → beyond 5×
-      if (age < baseInterval * 2.5) {
-        setDevStatus('Online');
-        setSignalQuality('Excellent');
-      } else if (age < baseInterval * 5) {
-        setDevStatus('Warning');
-        setSignalQuality('Fair');
-      } else {
-        setDevStatus('Offline');
-        setSignalQuality('Poor');
-      }
-
-
-    };
-
-    // Run immediately so there's no initial blank state
-    tick();
-    const interval = setInterval(tick, 2000);
-    return () => clearInterval(interval);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // ← empty deps: interval created once, reads fresh store state each tick
+  const devStatusLabel = isOnline ? 'Online' : isWarning ? 'Warning' : 'Offline';
+  const signalQuality = isOnline ? 'Excellent' : isWarning ? 'Fair' : 'Poor';
 
   const operations = [
     { label: 'MQTT Broker', value: system.mqtt.status, status: system.mqtt.status === 'Connected' ? 'bg-success' : 'bg-danger' },
     { label: 'Backend API', value: system.backend.status, status: system.backend.status === 'Running' ? 'bg-success' : 'bg-danger' },
-    { label: 'Device Status', value: devStatus, status: devStatus === 'Online' ? 'bg-success' : devStatus === 'Warning' ? 'bg-status-moderate' : 'bg-danger' },
-    { label: 'Signal Quality', value: signalQuality, status: signalQuality === 'Excellent' ? 'bg-success' : signalQuality === 'Fair' ? 'bg-status-moderate' : 'bg-danger' },
+    { label: 'Device Status', value: devStatusLabel, status: isOnline ? 'bg-success' : isWarning ? 'bg-status-moderate' : 'bg-danger' },
+    { label: 'Signal Quality', value: signalQuality, status: isOnline ? 'bg-success' : isWarning ? 'bg-status-moderate' : 'bg-danger' },
   ];
-
-
 
   return (
     <div className="bg-white rounded-[16px] shadow-soft p-[24px] h-full flex flex-col justify-between">

@@ -146,11 +146,11 @@ export function UsersManager() {
 
   if (!canManageUsers) {
     return (
-      <div className="p-8 max-w-xl mx-auto bg-white rounded-2xl shadow-soft border border-neutral-200/80 text-center mt-12">
+      <div className="p-8 max-w-xl mx-auto bg-[#F8FAFC] rounded-2xl shadow-soft border border-[#E2E8F0] text-center mt-12">
         <div className="w-14 h-14 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4">
           <Shield className="w-7 h-7" />
         </div>
-        <h2 className="text-xl font-bold text-neutral-900 mb-2">Access Restricted</h2>
+        <h2 className="text-xl font-bold text-[#172033] mb-2">Access Restricted</h2>
         <p className="text-sm text-neutral-500">
           User management is restricted to Client Administrators and Super Administrators. Viewer accounts do not have permission to view or manage user credentials.
         </p>
@@ -167,7 +167,7 @@ export function UsersManager() {
             <Users className="w-4 h-4" />
             <span>{isSuperAdmin ? 'Platform Management' : 'Client Organization Management'}</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#172033] tracking-tight">
             User Credentials Directory
           </h1>
           <p className="text-neutral-500 text-sm mt-1">
@@ -180,7 +180,7 @@ export function UsersManager() {
         <button
           onClick={() => loadUsers(true)}
           disabled={fetching}
-          className="inline-flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-neutral-50 text-neutral-700 font-semibold text-xs rounded-xl border border-neutral-200/80 shadow-xs transition-all disabled:opacity-50 self-start sm:self-auto cursor-pointer"
+          className="inline-flex items-center gap-2 px-3.5 py-2 bg-[#F8FAFC] hover:bg-white text-[#172033] font-semibold text-xs rounded-xl border border-[#E2E8F0] shadow-xs transition-all disabled:opacity-50 self-start sm:self-auto cursor-pointer"
         >
           <RefreshCw className={cn("w-3.5 h-3.5", fetching && "animate-spin text-primary")} />
           <span>Refresh Directory</span>
@@ -203,13 +203,13 @@ export function UsersManager() {
       )}
 
       {/* Creation Form Card */}
-      <div className="bg-white rounded-2xl shadow-soft border border-neutral-200/80 p-6 sm:p-8">
+      <div className="bg-[#F8FAFC] rounded-2xl shadow-soft border border-[#E2E8F0] p-6 sm:p-8">
         <div className="flex items-center gap-3 border-b border-neutral-100 pb-5 mb-6">
           <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
             <UserPlus className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-neutral-900">
+            <h2 className="text-lg font-bold text-[#172033]">
               {isSuperAdmin ? 'Create New User Account' : 'Create Viewer Credentials'}
             </h2>
             <p className="text-xs text-neutral-500">
@@ -254,6 +254,7 @@ export function UsersManager() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="At least 6 characters"
                   required
+                  autoComplete="new-password"
                   className="w-full pl-10 pr-10 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl text-sm font-medium text-neutral-800 placeholder-neutral-400 outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/10 transition-all"
                 />
                 <button
@@ -320,7 +321,7 @@ export function UsersManager() {
       </div>
 
       {/* Directory Table Card */}
-      <div className="bg-white rounded-2xl shadow-soft border border-neutral-200/80 overflow-hidden">
+      <div className="bg-[#F8FAFC] rounded-2xl shadow-soft border border-[#E2E8F0] overflow-hidden">
         <div className="px-6 py-5 border-b border-neutral-100 flex items-center justify-between">
           <div>
             <h2 className="text-base font-bold text-neutral-900">Registered User Accounts</h2>

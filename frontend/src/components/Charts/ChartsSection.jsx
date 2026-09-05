@@ -12,14 +12,13 @@ import { Download, CheckSquare, Square, LayoutGrid, Layers } from 'lucide-react'
 const METRIC_CONFIG = [
   { key: 'AQI', label: 'AQI', color: '#10B981', yAxisId: 'left', unit: '', defaultVisible: true, strokeDasharray: '0' },
   { key: 'CO2', label: 'CO₂', color: '#EF4444', yAxisId: 'right', unit: 'ppm', defaultVisible: true, strokeDasharray: '0' },
-  { key: 'VOC', label: 'VOC', color: '#F59E0B', yAxisId: 'right', unit: 'ppb', defaultVisible: false, strokeDasharray: '5 5' },
+  { key: 'VOC', label: 'VOC', color: '#F59E0B', yAxisId: 'right', unit: 'ppb', defaultVisible: true, strokeDasharray: '5 5' },
   { key: 'Temperature', label: 'Temperature', color: '#3B82F6', yAxisId: 'far-right', unit: '°C', defaultVisible: true, strokeDasharray: '0' },
   { key: 'Humidity', label: 'Humidity', color: '#14B8A6', yAxisId: 'far-right', unit: '%', defaultVisible: true, strokeDasharray: '5 5' },
+  { key: 'PM1_0', label: 'PM1.0', color: '#06B6D4', yAxisId: 'left', unit: 'µg/m³', defaultVisible: true, strokeDasharray: '5 5' },
   { key: 'PM2_5', label: 'PM2.5', color: '#8B5CF6', yAxisId: 'left', unit: 'µg/m³', defaultVisible: true, strokeDasharray: '0' },
-  { key: 'NOX', label: 'NOx', color: '#6B7280', yAxisId: 'right', unit: 'ppb', defaultVisible: false, strokeDasharray: '2 2' },
-  { key: 'PM1_0', label: 'PM1.0', color: '#06B6D4', yAxisId: 'left', unit: 'µg/m³', defaultVisible: false, strokeDasharray: '5 5' },
-  { key: 'PM4_0', label: 'PM4.0', color: '#D946EF', yAxisId: 'left', unit: 'µg/m³', defaultVisible: false, strokeDasharray: '2 2' },
-  { key: 'PM10', label: 'PM10', color: '#EC4899', yAxisId: 'left', unit: 'µg/m³', defaultVisible: false, strokeDasharray: '8 3 2 3' },
+  { key: 'PM4_0', label: 'PM4.0', color: '#D946EF', yAxisId: 'left', unit: 'µg/m³', defaultVisible: true, strokeDasharray: '2 2' },
+  { key: 'PM10', label: 'PM10', color: '#EC4899', yAxisId: 'left', unit: 'µg/m³', defaultVisible: true, strokeDasharray: '8 3 2 3' },
 ];
 
 const AXIS_THEME = {
@@ -70,16 +69,6 @@ const processDataWithGapsAndDetect = (data, range) => {
   }
 
   const rawCount = (data || []).length;
-  const firstHistoryTs = rawCount > 0 ? (data[0]._ts || new Date(data[0].timestamp).getTime()) : null;
-  const lastHistoryTs = rawCount > 0 ? (data[rawCount - 1]._ts || new Date(data[rawCount - 1].timestamp).getTime()) : null;
-
-  console.log('[GRAPH-DEBUG] BEFORE processDataWithGapsAndDetect', {
-    range,
-    historyLength: rawCount,
-    firstHistoryTimestamp: firstHistoryTs ? new Date(firstHistoryTs).toISOString() : null,
-    lastHistoryTimestamp: lastHistoryTs ? new Date(lastHistoryTs).toISOString() : null,
-    nowTimeMsISO: new Date(nowTimeMs).toISOString()
-  });
 
   // Normalize and validate all input data points
   const validPoints = (data || [])
@@ -106,7 +95,6 @@ const processDataWithGapsAndDetect = (data, range) => {
         PM2_5: formatVal(p.PM2_5),
         PM4_0: formatVal(p.PM4_0),
         PM10: formatVal(p.PM10),
-        NOX: formatVal(p.NOX),
       };
     })
     .filter(Boolean)
@@ -126,12 +114,6 @@ const processDataWithGapsAndDetect = (data, range) => {
   }
 
   if (sorted.length === 0) {
-    console.log('[GRAPH-DEBUG] processDataWithGapsAndDetect - EMPTY sorted', {
-      rawCount,
-      range,
-      queryStartMs: new Date(queryStartMs).toISOString(),
-      queryEndMs: new Date(queryEndMs).toISOString()
-    });
     return {
       chartData: [],
       gaps: [],
@@ -143,18 +125,7 @@ const processDataWithGapsAndDetect = (data, range) => {
   const chartData = [];
   const gaps = [];
 
-  const firstPointTs = sorted[0]._ts;
-  const lastPointTs = sorted[sorted.length - 1]._ts;
-
-  // 1. Gap from start of range to first data point
-  if (firstPointTs - queryStartMs > gapThresholdMs) {
-    gaps.push({
-      start: queryStartMs,
-      end: firstPointTs
-    });
-  }
-
-  // 2. Loop through real points to find consecutive gap points
+  // Loop through real points to find consecutive in-stream gap points
   for (let i = 0; i < sorted.length; i++) {
     chartData.push(sorted[i]);
     if (i < sorted.length - 1) {
@@ -174,37 +145,6 @@ const processDataWithGapsAndDetect = (data, range) => {
       }
     }
   }
-
-  // 3. Gap from last data point to end of range
-  if (queryEndMs - lastPointTs > gapThresholdMs) {
-    gaps.push({
-      start: lastPointTs,
-      end: queryEndMs
-    });
-  }
-
-  const chartCount = chartData.length;
-  const firstChartTs = chartCount > 0 ? chartData[0]._ts : null;
-  const lastChartTs = chartCount > 0 ? chartData[chartCount - 1]._ts : null;
-
-  console.log('[GRAPH-DEBUG] AFTER processDataWithGapsAndDetect', {
-    range,
-    historyLength: rawCount,
-    sortedLength: sorted.length,
-    chartDataLength: chartCount,
-    firstHistoryTimestamp: firstHistoryTs ? new Date(firstHistoryTs).toISOString() : null,
-    lastHistoryTimestamp: lastHistoryTs ? new Date(lastHistoryTs).toISOString() : null,
-    firstChartTimestamp: firstChartTs ? new Date(firstChartTs).toISOString() : null,
-    lastChartTimestamp: lastChartTs ? new Date(lastChartTs).toISOString() : null,
-    queryStartMsISO: new Date(queryStartMs).toISOString(),
-    queryEndMsISO: new Date(queryEndMs).toISOString(),
-    gapsCount: gaps.length,
-    gapsDetails: gaps.map(g => ({
-      start: new Date(g.start).toISOString(),
-      end: new Date(g.end).toISOString(),
-      durationMin: ((g.end - g.start) / 60000).toFixed(1)
-    }))
-  });
 
   return { chartData, gaps, queryStartMs, queryEndMs };
 };
@@ -373,53 +313,7 @@ export function ChartsSection() {
     return processDataWithGapsAndDetect(history || [], timeRange);
   }, [history, timeRange]);
 
-  // Comprehensive graph debug logging on every render
-  console.log('[GRAPH-DEBUG] ChartsSection RENDER', {
-    selectedDeviceId,
-    timeRange,
-    isHistoryLoading,
-    uiState,
-    historyLength: history ? history.length : 0,
-    firstHistoryItem: history && history.length > 0 ? history[0] : null,
-    lastHistoryItem: history && history.length > 0 ? history[history.length - 1] : null,
-    chartDataLength: chartData ? chartData.length : 0,
-    firstChartPoint: chartData && chartData.length > 0 ? chartData[0] : null,
-    lastChartPoint: chartData && chartData.length > 0 ? chartData[chartData.length - 1] : null,
-    queryStartMs,
-    queryEndMs,
-    gapsCount: gaps ? gaps.length : 0,
-    containerWidth: containerDimensions.width,
-    containerHeight: containerDimensions.height
-  });
 
-  // Logging per requirements 1 & 11
-  const initialLoggedRef = useRef(false);
-  useEffect(() => {
-    if (!initialLoggedRef.current && !isLoading && !isHistoryLoading) {
-      initialLoggedRef.current = true;
-      console.log('[GRAPH-DEBUG] INITIAL RENDER COMPLETE', {
-        loading: isLoading || isHistoryLoading,
-        dataLength: chartData.length,
-        firstTimestamp: chartData[0]?._ts,
-        lastTimestamp: chartData[chartData.length - 1]?._ts,
-        chartWidth: containerDimensions.width,
-        chartHeight: containerDimensions.height,
-        selectedRange: timeRange,
-      });
-    }
-  }, [isLoading, isHistoryLoading, chartData, containerDimensions, timeRange]);
-
-  useEffect(() => {
-    console.log('[CHART] chartData changed', {
-      length: chartData.length,
-      first: chartData[0],
-      last: chartData[chartData.length - 1],
-    });
-  }, [chartData]);
-
-  useEffect(() => {
-    console.log('[CHART] range changed', timeRange);
-  }, [timeRange]);
 
   const activeMetricsList = useMemo(() => {
     return METRIC_CONFIG.filter(c => visibleMetrics[c.key]);
@@ -535,7 +429,7 @@ export function ChartsSection() {
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-[16px] shadow-soft p-4 md:p-[24px] min-h-[500px]">
+      <div className="bg-[#F8FAFC] rounded-[16px] border border-[#E2E8F0] shadow-soft p-4 md:p-[24px] min-h-[500px]">
         <div className="flex justify-between items-center mb-6">
           <Skeleton className="w-48 h-8" />
           <Skeleton className="w-64 h-8" />
@@ -547,7 +441,7 @@ export function ChartsSection() {
 
   if (!selectedDeviceId) {
     return (
-      <div className="bg-white rounded-[16px] shadow-soft p-4 md:p-[24px] flex flex-col w-full min-h-[400px] items-center justify-center gap-4">
+      <div className="bg-[#F8FAFC] rounded-[16px] border border-[#E2E8F0] shadow-soft p-4 md:p-[24px] flex flex-col w-full min-h-[400px] items-center justify-center gap-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between w-full mb-4 gap-4">
           <h3 className="text-[20px] font-bold text-neutral-800">Air Quality Analytics</h3>
           {controlsContent}
@@ -560,7 +454,7 @@ export function ChartsSection() {
   }
 
   return (
-    <div className="bg-white rounded-[16px] shadow-soft p-4 md:p-[24px] flex flex-col w-full h-full min-h-[500px] md:min-h-[600px]">
+    <div className="bg-[#F8FAFC] rounded-[16px] border border-[#E2E8F0] shadow-soft p-4 md:p-[24px] flex flex-col w-full h-full min-h-[500px] md:min-h-[600px]">
       
       <div className="flex flex-col xl:flex-row xl:items-center justify-between mb-6 gap-4">
         <h3 className="text-[18px] md:text-[20px] font-bold text-neutral-800">Air Quality Analytics</h3>

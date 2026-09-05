@@ -76,14 +76,14 @@ router.post('/register', requireRole('SUPER_ADMIN'), async (req, res) => {
   }
 });
 
-// PATCH /devices/:deviceId - Update device location / name (SUPER_ADMIN or CLIENT_ADMIN)
+// PATCH /devices/:deviceId - Update device location / name / spatial hierarchy (SUPER_ADMIN or CLIENT_ADMIN)
 router.patch('/:deviceId', requireRole('SUPER_ADMIN', 'CLIENT_ADMIN'), async (req, res) => {
   try {
     const { deviceId } = req.params;
-    const { location, name } = req.body;
+    const { location, name, buildingId, floorId, roomId } = req.body;
 
-    if (location === undefined && name === undefined) {
-      return res.status(400).json({ error: 'location or name is required' });
+    if (location === undefined && name === undefined && buildingId === undefined && floorId === undefined && roomId === undefined) {
+      return res.status(400).json({ error: 'At least one field (location, name, buildingId, floorId, roomId) is required' });
     }
 
     const hasAccess = await verifyDeviceTenantAccess(deviceId, req.user);
@@ -91,17 +91,17 @@ router.patch('/:deviceId', requireRole('SUPER_ADMIN', 'CLIENT_ADMIN'), async (re
       return res.status(403).json({ error: 'Access denied: You do not have permissions for this device' });
     }
 
-    await updateDeviceLocation(deviceId, location, name);
+    await updateDeviceLocation(deviceId, location, name, buildingId, floorId, roomId);
 
     await logAudit({
       req,
       action: 'UPDATE_DEVICE_LOCATION',
       resource: 'Device',
       resourceId: deviceId,
-      metadata: { location, name }
+      metadata: { location, name, buildingId, floorId, roomId }
     });
 
-    res.json({ message: 'Device location updated successfully', deviceId, location, name });
+    res.json({ message: 'Device location updated successfully', deviceId, location, name, buildingId, floorId, roomId });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update location: ' + error.message });
   }
@@ -116,9 +116,9 @@ router.get('/:deviceId/latest', async (req, res) => {
       return res.status(403).json({ error: 'Access denied: You do not have permissions for this device' });
     }
 
-    const latest = getLatestPayload(deviceId);
+    const latest = await getLatestPayload(deviceId);
     if (!latest) {
-      return res.status(404).json({ error: 'No data available yet' });
+      return res.json({ deviceId, message: 'No telemetry data available yet', sensors: null });
     }
     res.json(latest);
   } catch (error) {

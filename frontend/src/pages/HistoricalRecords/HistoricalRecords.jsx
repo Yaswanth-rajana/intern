@@ -307,7 +307,7 @@ export function HistoricalRecords() {
           <button
             onClick={handleExportCSV}
             disabled={isLoading || isExporting || readings.length === 0}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-neutral-200 text-neutral-700 hover:text-neutral-950 hover:bg-neutral-50 shadow-sm transition-all text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer animate-duration-150"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-[#172033] hover:bg-white shadow-sm transition-all text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer animate-duration-150"
           >
             {isExporting ? <RefreshCw className="w-4 h-4 animate-spin text-neutral-400" /> : <Download className="w-4 h-4 text-neutral-500" />}
             {isExporting ? 'Exporting...' : 'Export CSV'}
@@ -320,7 +320,7 @@ export function HistoricalRecords() {
       </div>
 
       {/* Filters Card */}
-      <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm p-5 space-y-4">
+      <div className="bg-[#F8FAFC] rounded-2xl border border-[#E2E8F0] shadow-sm p-5 space-y-4">
         <div className="flex items-center gap-2 text-xs font-extrabold text-neutral-400 uppercase tracking-widest">
           <Filter className="w-4 h-4" />
           Filter Historical Readings
@@ -431,9 +431,9 @@ export function HistoricalRecords() {
           { label: 'Period', value: summaryInfo.period },
           { label: 'Latest Reading', value: summaryInfo.latestTime }
         ].map((item, idx) => (
-          <div key={idx} className="bg-white rounded-2xl border border-neutral-200 p-4 shadow-sm flex flex-col justify-between">
+          <div key={idx} className="bg-[#F8FAFC] rounded-2xl border border-[#E2E8F0] p-4 shadow-sm flex flex-col justify-between">
             <span className="text-[10px] font-extrabold text-neutral-400 uppercase tracking-widest">{item.label}</span>
-            <span className="text-sm font-extrabold text-neutral-800 truncate mt-1.5" title={item.value}>{item.value}</span>
+            <span className="text-sm font-extrabold text-[#172033] truncate mt-1.5" title={item.value}>{item.value}</span>
           </div>
         ))}
       </div>
@@ -447,7 +447,7 @@ export function HistoricalRecords() {
       )}
 
       {/* Table Section */}
-      <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden flex flex-col">
+      <div className="bg-[#F8FAFC] rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden flex flex-col">
         {/* Scrollable table container with custom scrollbar properties */}
         <div className="overflow-x-auto min-w-0 scrollbar-thin scrollbar-thumb-neutral-300 scrollbar-track-neutral-100 hover:scrollbar-thumb-neutral-400 transition-all border-b border-neutral-200">
           <table className="w-full border-collapse text-center">

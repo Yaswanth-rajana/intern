@@ -134,20 +134,21 @@ const getInitialVisibleMetrics = () => {
   try {
     const saved = localStorage.getItem('iaq_visible_metrics');
     if (saved) {
-      return JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      delete parsed.NOX;
+      return parsed;
     }
   } catch (e) {}
   return {
     AQI: true,
     CO2: true,
+    VOC: true,
     Temperature: true,
     Humidity: true,
+    PM1_0: true,
     PM2_5: true,
-    VOC: false,
-    NOX: false,
-    PM1_0: false,
-    PM4_0: false,
-    PM10: false,
+    PM4_0: true,
+    PM10: true,
   };
 };
 
@@ -159,10 +160,38 @@ const getInitialTimeRange = () => {
   return 'live';
 };
 
-const normalizeRawHistory = (rawData, range) => {
+const resolveTelemetryTimeMs = (latestData, deviceObj) => {
+  if (latestData) {
+    if (typeof latestData._ts === 'number' && Number.isFinite(latestData._ts)) return latestData._ts;
+    if (latestData.timestamp) {
+      const ts = typeof latestData.timestamp === 'number' ? latestData.timestamp : new Date(latestData.timestamp).getTime();
+      if (Number.isFinite(ts)) return ts;
+    }
+    if (latestData.lastTelemetryAt) {
+      const ts = new Date(latestData.lastTelemetryAt).getTime();
+      if (Number.isFinite(ts)) return ts;
+    }
+    if (latestData.createdAt) {
+      const ts = new Date(latestData.createdAt).getTime();
+      if (Number.isFinite(ts)) return ts;
+    }
+  }
+  if (deviceObj) {
+    if (deviceObj.lastTelemetryAt) {
+      const ts = new Date(deviceObj.lastTelemetryAt).getTime();
+      if (Number.isFinite(ts)) return ts;
+    }
+    if (deviceObj.lastSeenAt || deviceObj.lastSeen) {
+      const ts = new Date(deviceObj.lastSeenAt || deviceObj.lastSeen).getTime();
+      if (Number.isFinite(ts)) return ts;
+    }
+  }
+  return null;
+};
+
+const normalizeRawHistory = (rawData) => {
   if (!Array.isArray(rawData)) return [];
-  const sortedData = range === 'live' ? [...rawData].reverse() : rawData;
-  return sortedData
+  return rawData
     .map(p => {
       const ts = typeof p._ts === 'number' && Number.isFinite(p._ts)
         ? p._ts 
@@ -186,11 +215,12 @@ const normalizeRawHistory = (rawData, range) => {
         PM2_5: formatVal(p.sensors?.PM2_5 ?? p.sensors?.['PM2.5'] ?? p.PM2_5),
         PM4_0: formatVal(p.sensors?.PM4_0 ?? p.sensors?.['PM4.0'] ?? p.PM4_0),
         PM10: formatVal(p.sensors?.PM10 ?? p.PM10),
-        NOX: formatVal(p.sensors?.NOX ?? p.NOX),
       };
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    .sort((a, b) => a._ts - b._ts);
 };
+
 
 export const useDashboardStore = create((set, get) => ({
   deviceList: [],
@@ -238,7 +268,6 @@ export const useDashboardStore = create((set, get) => ({
 
   // Unified shared history fetcher for initialize, setTimeRange, and selectDevice
   loadChartData: async (deviceId, range) => {
-    console.log('[GRAPH-DEBUG] loadChartData called', { deviceId, range });
     if (!deviceId) {
       set({ history: [], isHistoryLoading: false, historyError: null });
       return [];
@@ -253,7 +282,7 @@ export const useDashboardStore = create((set, get) => ({
       if (get()._currentFetchToken !== fetchToken) return null;
 
       const rawData = res?.data || [];
-      const normalized = normalizeRawHistory(rawData, range);
+      const normalized = normalizeRawHistory(rawData);
 
       let finalHistory = normalized;
       if (range === 'live') {
@@ -267,16 +296,6 @@ export const useDashboardStore = create((set, get) => ({
         finalHistory = sorted.filter(p => p._ts >= cutoff);
       }
 
-      console.log('[GRAPH-DEBUG] loadChartData received', {
-        deviceId,
-        range,
-        rawDataLength: rawData.length,
-        normalizedLength: normalized.length,
-        finalHistoryLength: finalHistory.length,
-        firstItem: finalHistory[0],
-        lastItem: finalHistory[finalHistory.length - 1]
-      });
-
       set({ 
         history: finalHistory, 
         isHistoryLoading: false, 
@@ -286,7 +305,7 @@ export const useDashboardStore = create((set, get) => ({
       return finalHistory;
     } catch (err) {
       if (get()._currentFetchToken !== fetchToken) return null;
-      console.error('[GRAPH-DEBUG] Failed to load chart history:', err);
+      console.error('Failed to load chart history:', err);
       set({ 
         historyError: range === 'live' ? 'Failed to load live history buffer' : 'Failed to load historical data', 
         isHistoryLoading: false 
@@ -297,7 +316,6 @@ export const useDashboardStore = create((set, get) => ({
 
   setTimeRange: async (range) => {
     const { selectedDeviceId } = get();
-    console.log('[GRAPH-DEBUG] setTimeRange called', { range, selectedDeviceId });
     try {
       localStorage.setItem('iaq_time_range', range);
     } catch (e) {}
@@ -326,13 +344,6 @@ export const useDashboardStore = create((set, get) => ({
   }),
 
   initialize: async () => {
-    console.log('[GRAPH-DEBUG] INITIALIZE called', {
-      isInitialized: get().isInitialized,
-      _initializing: get()._initializing,
-      currentTimeRange: get().timeRange,
-      currentSelectedDeviceId: get().selectedDeviceId
-    });
-
     if (get()._initializing || get().isInitialized) {
       return;
     }
@@ -360,12 +371,6 @@ export const useDashboardStore = create((set, get) => ({
 
       const defaultDevice = devices.length > 0 ? devices[0].deviceId : null;
       const activeRange = get().timeRange;
-
-      console.log('[GRAPH-DEBUG] INITIALIZE devices fetched', {
-        devicesCount: devices?.length,
-        defaultDevice,
-        activeRange
-      });
 
       let latestData = null;
 
@@ -403,12 +408,6 @@ export const useDashboardStore = create((set, get) => ({
         return d;
       });
 
-      console.log('[GRAPH-DEBUG] INITIALIZE setting final state', {
-        defaultDevice,
-        historyLength: get().history?.length,
-        timeRange: get().timeRange
-      });
-
       set((state) => ({
         deviceList: updatedDevices,
         selectedDeviceId: defaultDevice,
@@ -424,7 +423,7 @@ export const useDashboardStore = create((set, get) => ({
             ...(updatedDevices.find(d => d.deviceId === defaultDevice) || {}),
             ...latestData
           },
-          lastPacketTime: latestData ? Date.now() : null,
+          lastPacketTime: resolveTelemetryTimeMs(latestData, updatedDevices.find(d => d.deviceId === defaultDevice)),
         },
         system: {
           ...state.system,
@@ -524,7 +523,7 @@ export const useDashboardStore = create((set, get) => ({
               ...(updatedDevices.find(d => d.deviceId === deviceId) || {}),
               ...latestData
             },
-            lastPacketTime: latestData ? Date.now() : null,
+            lastPacketTime: resolveTelemetryTimeMs(latestData, updatedDevices.find(d => d.deviceId === deviceId)),
           },
           ui: { state: 'live' }
         };
@@ -541,18 +540,29 @@ export const useDashboardStore = create((set, get) => ({
 
   handleDeviceStatusChanged: ({ deviceId, status }) => {
     set((state) => {
+      const statusUpper = (status || 'OFFLINE').toUpperCase();
       const newList = state.deviceList.map(d => 
-        d.deviceId === deviceId ? { ...d, status } : d
+        d.deviceId === deviceId ? { ...d, status: statusUpper } : d
       );
-      // Re-sort correctly: Online -> Warning -> Offline, newest first
-      const statusOrder = { 'Online': 0, 'Warning': 1, 'Offline': 2 };
+      const statusOrder = { 'ONLINE': 0, 'Online': 0, 'WARNING': 1, 'Warning': 1, 'OFFLINE': 2, 'Offline': 2, 'UNASSIGNED': 3 };
       newList.sort((a, b) => {
-        if (statusOrder[a.status] !== statusOrder[b.status]) {
-          return statusOrder[a.status] - statusOrder[b.status];
-        }
-        return new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime();
+        const orderA = statusOrder[a.status] ?? 4;
+        const orderB = statusOrder[b.status] ?? 4;
+        if (orderA !== orderB) return orderA - orderB;
+        return new Date(b.lastSeenAt || b.lastSeen || 0).getTime() - new Date(a.lastSeenAt || a.lastSeen || 0).getTime();
       });
-      return { deviceList: newList };
+
+      const updatedDeviceInfo = state.selectedDeviceId === deviceId 
+        ? { ...state.device.info, status: statusUpper }
+        : state.device.info;
+
+      return { 
+        deviceList: newList,
+        device: {
+          ...state.device,
+          info: updatedDeviceInfo
+        }
+      };
     });
   },
 
@@ -621,27 +631,6 @@ export const useDashboardStore = create((set, get) => ({
       let newStats = state.stats;
 
       if (payload.deviceId === state.selectedDeviceId) {
-        const prevHistory = state.history || [];
-        const prevLen = prevHistory.length;
-        const firstPrevTs = prevLen > 0 ? prevHistory[0]._ts : null;
-        const lastPrevTs = prevLen > 0 ? prevHistory[prevLen - 1]._ts : null;
-
-        console.log('[GRAPH-DEBUG] BEFORE handleSensorData history mutation', {
-          selectedDeviceId: state.selectedDeviceId,
-          timeRange: state.timeRange,
-          previousHistoryLength: prevLen,
-          firstTimestamp: firstPrevTs ? new Date(firstPrevTs).toISOString() : null,
-          lastTimestamp: lastPrevTs ? new Date(lastPrevTs).toISOString() : null,
-          first10Timestamps: prevHistory.slice(0, 10).map(p => new Date(p._ts).toISOString()),
-          last10Timestamps: prevHistory.slice(-10).map(p => new Date(p._ts).toISOString())
-        });
-
-        console.log('[GRAPH-DEBUG] INCOMING MQTT PACKET', {
-          deviceId: payload.deviceId,
-          incomingTimestamp: payload.timestamp,
-          serverTimestamp: nowIso,
-          parsedTimestampMs: now
-        });
 
         if (state.timeRange === 'live') {
           const newHistoryPoint = {
@@ -662,13 +651,6 @@ export const useDashboardStore = create((set, get) => ({
         }
 
         const newLen = newHistory.length;
-        console.log('[GRAPH-DEBUG] AFTER handleSensorData history mutation', {
-          newHistoryLength: newLen,
-          firstTimestamp: newLen > 0 ? new Date(newHistory[0]._ts).toISOString() : null,
-          lastTimestamp: newLen > 0 ? new Date(newHistory[newLen - 1]._ts).toISOString() : null,
-          first10Timestamps: newHistory.slice(0, 10).map(p => new Date(p._ts).toISOString()),
-          last10Timestamps: newHistory.slice(-10).map(p => new Date(p._ts).toISOString())
-        });
         const newTotalPackets = state.device.totalPackets + 1;
         newDevice = {
           ...state.device,
@@ -815,15 +797,15 @@ export const useDashboardStore = create((set, get) => ({
     });
   },
 
-  updateDeviceLocation: async (deviceId, location) => {
+  updateDeviceLocation: async (deviceId, location, buildingId = null, floorId = null, roomId = null) => {
     try {
-      await updateDeviceLocation(deviceId, location);
+      await updateDeviceLocation(deviceId, location, buildingId, floorId, roomId);
       set((state) => {
         const newList = state.deviceList.map(d => 
-          d.deviceId === deviceId ? { ...d, location } : d
+          d.deviceId === deviceId ? { ...d, location, buildingId, floorId, roomId } : d
         );
         const updatedInfo = state.device.info.deviceId === deviceId 
-          ? { ...state.device.info, location } 
+          ? { ...state.device.info, location, buildingId, floorId, roomId } 
           : state.device.info;
         return {
           deviceList: newList,

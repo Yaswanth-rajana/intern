@@ -7,7 +7,7 @@ import thresholdsRouter from './routes/thresholds.js';
 import tenantsRouter from './routes/tenants.js';
 import auditLogsRouter from './routes/auditLogs.js';
 import readingsRouter from './routes/readings.js';
-import superadminActivityRouter from './routes/superadminActivity.js';
+import superadminDevicesRouter from './routes/superadminDevices.js';
 
 const app = express();
 
@@ -24,7 +24,6 @@ app.use('/thresholds', thresholdsRouter);
 app.use('/tenants', tenantsRouter);
 app.use('/audit-logs', auditLogsRouter);
 app.use('/api/readings', readingsRouter);
-app.use('/api/superadmin/device-activity', superadminActivityRouter);
-
+app.use('/api/superadmin/devices', superadminDevicesRouter);
 
 export default app;
